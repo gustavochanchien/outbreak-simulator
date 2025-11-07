@@ -1,0 +1,2201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Outbreak Epidemiology Disease Simulator</title>
+
+  <!--
+    ==============================================================
+    Outbreak Simulator (cleaned & commented)
+    --------------------------------------------------------------
+    What this file contains
+    - Single-file demo app (HTML + CSS + JS)
+    - Deterministic grid-based SEIRD toy model with vaccination
+    - No external dependencies; runs fully in-browser
+
+    Key concepts for new developers
+    - State is stored in a central `State` object.
+    - `step()` advances the simulation one dt.
+    - `drawCanvas()` renders the population grid.
+    - `drawCharts()` renders time-series charts for incidence and SEIRD.
+    - UI wiring lives at the bottom in the Events section.
+
+    Determinism
+    - `setSeed()` overwrites `Math.random` with a simple LCG to allow
+      reproducible runs given the same seed. If you need a safer or
+      scoped RNG behavior, replace this with a local PRNG instance
+      instead of touching `Math.random` globally.
+    ==============================================================
+  -->
+
+  <style>
+    /* ======================= CSS VARIABLES ======================= */
+    :root {
+      --font-body: 14px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    /* -------------------- DARK THEME (default) ------------------- */
+    :root[data-theme="dark"] {
+      --bg:#0b0d12;
+      --panel:#121621;
+      --muted:#8a93a6;
+      --text:#e7ecf5;
+
+      --accent:#4da3ff;
+      --accent2:#ffb547;
+
+      --c-sus:#525252;
+      --c-exp:#ffd54a;
+      --c-inf:#ff4d4d;
+      --c-imm:#4cba87;
+      --c-dead:#b00020;
+
+      --vax-eff:#2196f3;
+      --vax-ineff:#2196f3;
+
+      --canvas-bg:#0e1320;
+      --panel-soft:#1b2233;
+
+      --border-soft:rgba(255,255,255,.06);
+      --border-strong:rgba(255,255,255,.18);
+
+      --input-bg:#0e1320;
+      --input-border:rgba(255,255,255,.10);
+
+      --pill-bg:#1b2233;
+    }
+
+    /* ------------------------ LIGHT THEME ------------------------ */
+    :root[data-theme="light"] {
+      --bg:#ffffff;
+      --panel:#ffffff;
+      --muted:#6b7280;
+      --text:#111827;
+
+      --accent:#2563eb;
+      --accent2:#ea580c;
+
+      --c-sus:#cecece;
+      --c-exp:#d97706;
+      --c-inf:#dc2626;
+      --c-imm:#15803d;
+      --c-dead:#7f1d1d;
+
+      --vax-eff:#2563eb;
+      --vax-ineff:#2563eb;
+
+      --canvas-bg:#ffffff;
+      --panel-soft:#f3f4f6;
+      --border-soft:rgba(15,23,42,.08);
+      --border-strong:rgba(15,23,42,.16);
+
+      --input-bg:#f9fafb;
+      --input-border:rgba(148,163,253,.5);
+
+      --pill-bg:#f3f4f6;
+    }
+
+    /* ======================= BASE LAYOUT ========================= */
+    * { box-sizing:border-box; }
+
+    body {
+      margin:0;
+      font:var(--font-body);
+      background:var(--bg);
+      color:var(--text);
+    }
+
+    header {
+      position:sticky;
+      top:0;
+      z-index:20;
+      background:linear-gradient(180deg,var(--panel) 0%,var(--bg) 100%);
+      box-shadow:0 2px 0 rgba(0,0,0,.22);
+    }
+
+    .wrap {
+      width:100%;
+      margin:0;
+      padding:16px;
+    }
+
+    header .wrap {
+      position:relative;
+      padding-top:18px;
+      padding-bottom:10px;
+    }
+
+    h1 {
+      font-size:32px;
+      line-height:1.15;
+      margin:0 0 8px;
+      font-weight:700;
+      letter-spacing:0.01em;
+    }
+
+    @media (min-width:768px){
+      h1 { font-size:40px; }
+    }
+
+    .sub {
+      color:var(--muted);
+      max-width:780px;
+      font-size:13px;
+    }
+
+    /* Theme toggle button */
+    #themeToggle {
+      position:absolute;
+      top:14px;
+      right:16px;
+      padding:6px 11px;
+      border-radius:999px;
+      font-size:11px;
+      border:1px solid var(--border-soft);
+      background:transparent;
+      color:var(--muted);
+      cursor:pointer;
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      backdrop-filter:blur(6px);
+    }
+    #themeToggle span { font-size:13px; }
+
+    /* Header timer pill */
+    #simTimer {
+      position:absolute;
+      right:16px;
+      bottom:14px;
+    }
+
+    .grid {
+      display:grid;
+      grid-template-columns:1fr;
+      gap:14px;
+    }
+
+    .panel {
+      background:var(--panel);
+      border:1px solid var(--border-soft);
+      border-radius:14px;
+    }
+    .pad { padding:12px; }
+
+    .row {
+      display:grid;
+      grid-template-columns:repeat(12,1fr);
+      gap:10px;
+      align-items:end;
+    }
+
+    .cell { grid-column:span 3; }
+    .cell.w2 { grid-column:span 2; }
+    .cell.w4 { grid-column:span 4; }
+    .cell.w6 { grid-column:span 6; }
+    .cell.w12 { grid-column:span 12; }
+
+    label {
+      display:block;
+      font-size:12px;
+      color:var(--muted);
+      margin:2px 0 6px;
+    }
+
+    input[type="number"],
+    select {
+      width:100%;
+      padding:8px 10px;
+      border-radius:10px;
+      border:1px solid var(--input-border);
+      background:var(--input-bg);
+      color:var(--text);
+      outline:none;
+    }
+
+    input[type="number"]:focus,
+    select:focus {
+      border-color:var(--accent);
+      box-shadow:0 0 0 1px rgba(77,163,255,.24);
+    }
+
+    input[type="range"] { width:100%; }
+
+    .popSlider {
+      width:160px;
+      max-width:90%;
+    }
+
+    .hint {
+      font-size:12px;
+      color:var(--muted);
+      margin-left:6px;
+    }
+
+    .divider {
+      border-top:1px solid var(--border-soft);
+      margin:4px 0 4px;
+    }
+
+    .divider-label {
+      font-size:10px;
+      text-transform:uppercase;
+      letter-spacing:0.08em;
+      color:var(--muted);
+      margin-top:-2px;
+    }
+
+    .sim {
+      display:grid;
+      grid-template-columns:1fr 260px;
+      gap:14px;
+    }
+
+    .canvasWrap {
+      position:relative;
+      min-height:440px;
+    }
+
+    canvas#sim {
+      display:block;
+      width:100%;
+      height:100%;
+      background:var(--canvas-bg);
+      border-radius:14px;
+    }
+
+    .sidebar { position:relative; }
+
+    .status {
+      height:100%;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      gap:10px;
+      padding:12px;
+    }
+
+    .barsWrap {
+      display:flex;
+      gap:8px;
+      align-items:flex-start;
+    }
+
+    .bar {
+      position:relative;
+      width:42px;
+      height:380px;
+      border-radius:10px;
+      background:var(--canvas-bg);
+      border:1px solid var(--border-soft);
+      overflow:hidden;
+    }
+
+    .seg { width:100%; }
+
+    .legend {
+      display:grid;
+      grid-template-columns:12px 1fr;
+      gap:8px 10px;
+      width:100%;
+      margin-top:4px;
+    }
+
+    .legend .cnt {
+      font-size:11px;
+      color:var(--muted);
+      margin-left:4px;
+    }
+
+    .dot {
+      width:12px;
+      height:12px;
+      border-radius:4px;
+    }
+
+    .vaxLegendIcon {
+      width:14px;
+      height:14px;
+      border-radius:50%;
+      box-sizing:border-box;
+      border:2px solid var(--vax-eff);
+      background:transparent;
+    }
+    .vaxLegendIcon.dotted {
+      border-style:dashed;
+    }
+
+    .btn {
+      appearance:none;
+      border:none;
+      border-radius:10px;
+      background:var(--accent);
+      color:#001027;
+      padding:8px 12px;
+      font-weight:700;
+      cursor:pointer;
+      font-size:12px;
+    }
+
+    .btn.ghost {
+      background:transparent;
+      border:1px solid var(--border-strong);
+      color:var(--text);
+    }
+
+    .btn:focus-visible,
+    .miniBtn:focus-visible {
+      outline:2px solid var(--accent);
+      outline-offset:2px;
+    }
+
+    .footer {
+      padding:10px 16px 16px;
+      color:var(--muted);
+      font-size:11px;
+      text-align:center;
+      border-top:1px solid var(--border-soft);
+      background:transparent;
+    }
+
+    .pill {
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      background:var(--pill-bg);
+      border:1px solid var(--border-soft);
+      padding:2px 10px;
+      border-radius:999px;
+      color:var(--muted);
+      font-size:11px;
+    }
+
+    .timePanel { margin-top:12px; }
+
+    .scrubWrap {
+      display:flex;
+      align-items:center;
+      gap:10px;
+      margin:4px 0;
+    }
+
+    #scrubber { flex:1; }
+
+    .miniBtn {
+      appearance:none;
+      border:1px solid var(--border-soft);
+      background:var(--panel-soft);
+      color:var(--text);
+      border-radius:8px;
+      padding:4px 8px;
+      font-size:11px;
+      cursor:pointer;
+    }
+
+    .chartsPanel { margin-top:12px; }
+
+    .chartsRow {
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+      gap:10px;
+    }
+
+    .chartCell {
+      position:relative;
+      background:var(--canvas-bg);
+      border-radius:12px;
+      padding:8px;
+      border:1px solid var(--border-soft);
+    }
+
+    .chartTitle {
+      font-size:11px;
+      color:var(--muted);
+      margin:0 0 2px;
+    }
+
+    .chartExplain {
+      font-size:9px;
+      color:var(--muted);
+      margin:0 0 4px;
+      line-height:1.4;
+    }
+
+    canvas.chartCanvas {
+      width:100%;
+      height:auto;
+      display:block;
+      border-radius:8px;
+    }
+
+    @media (max-width:900px){
+      .sim { grid-template-columns:1fr; }
+      #simTimer {
+        position:static;
+        display:inline-flex;
+        margin-top:8px;
+      }
+    }
+  </style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <button id="themeToggle" type="button" aria-label="Toggle light and dark mode">
+      <span>☀</span> <span>Light mode</span>
+    </button>
+
+    <h1>Outbreak Epidemiology Disease Simulator</h1>
+    <div class="sub">
+      Simulation of disease outbreaks. Adjust infection rate, mutation, mortality, vaccination, and more to see how dynamics evolve.
+      Runs fully in your browser, so you can open multiple windows with the same seed to compare alternate timelines, inspect charts,
+      or export the data as CSV for your own analysis.
+    </div>
+  </div>
+</header>
+
+<main class="wrap grid" aria-live="polite">
+  <section class="panel pad">
+    <div class="row" id="coreRow">
+      <!-- ===================== STARTING CONDITIONS ===================== -->
+      <div class="cell">
+        <label>Preset Scenario</label>
+        <select id="scenario">
+          <option value="custom">Custom</option>
+          <option value="rare">Rare Disease</option>
+          <option value="endemic">Endemic Stability</option>
+          <option value="outbreak">Acute Outbreak</option>
+          <option value="flu">Flu-like</option>
+          <option value="covid">COVID-like</option>
+          <option value="measles">Measles-like</option>
+          <option value="ebola">Ebola-like</option>
+          <option value="sars1">SARS-1-like</option>
+          <option value="mers">MERS-like</option>
+          <option value="noro">Norovirus-like</option>
+        </select>
+      </div>
+
+      <div class="cell">
+        <label>Population N (<span id="NVal">5000</span>)</label>
+        <input
+          id="N"
+          class="popSlider"
+          type="range"
+          min="2"
+          max="10000"
+          step="1"
+          value="5000"
+        />
+      </div>
+
+      <div class="cell w2">
+        <label>Contact Neighbors (4 or 6)</label>
+        <select id="contacts">
+          <option value="4" selected>4 · Square</option>
+          <option value="6">6 · Hex</option>
+        </select>
+      </div>
+
+      <div class="cell w2">
+        <label>Seed</label>
+        <input id="seed" type="number" value="42" />
+      </div>
+
+      <div class="cell w2">
+        <label>Stochastic For Infection</label>
+        <select id="stochastic">
+          <option value="1">On</option>
+          <option value="0">Off</option>
+        </select>
+      </div>
+
+      <div class="cell w2">
+        <label>Initial Infected</label>
+        <input id="I0" type="number" min="0" max="10000" step="1" value="5" />
+      </div>
+
+      <div class="cell w2">
+        <label>Initial Immune</label>
+        <input id="R0" type="number" min="0" max="10000" step="1" value="0" />
+      </div>
+
+      <div class="cell w2">
+        <label>
+          Mutation Rate (immune → susceptible / day)
+          <span class="hint" id="mutRateVal">0.000</span>
+        </label>
+        <input id="mutRate" type="range" min="0" max="0.5" step="0.005" value="0" />
+      </div>
+
+      <div class="cell w2">
+        <label>
+          Days Infectious
+          <span class="hint" id="daysInfVal">10.0</span>
+        </label>
+        <input id="daysInf" type="range" min="1" max="30" step="0.5" value="10" />
+      </div>
+
+      <div class="cell w2">
+        <label>Time step (days)</label>
+        <input id="dt" type="number" min="0.1" max="10" step="0.1" value="1" />
+      </div>
+
+      <div class="cell w2">
+        <label>Auto-stop when stable</label>
+        <select id="autoStop">
+          <option value="1">On</option>
+          <option value="0">Off</option>
+        </select>
+      </div>
+
+      <!-- ===================== LIVE-ADJUSTABLE PARAMETERS ===================== -->
+      <div class="cell w12">
+        <div class="divider"></div>
+        <div class="divider-label"></div>
+      </div>
+
+      <div class="cell w4">
+        <label>Infection rate β <span class="hint" id="betaVal"></span></label>
+        <input id="beta" type="range" min="0" max="1.2" step="0.01" value="0.35" />
+      </div>
+      <div class="cell w4">
+        <label>Recovery rate γ <span class="hint" id="gammaVal"></span></label>
+        <input id="gamma" type="range" min="0" max="1" step="0.01" value="0.1" />
+      </div>
+      <div class="cell w4">
+        <label>Mortality rate μ <span class="hint" id="muVal"></span></label>
+        <input id="mu" type="range" min="0" max="0.5" step="0.005" value="0.01" />
+      </div>
+
+      <div class="cell w4">
+        <label>Vaccine / Medication Efficacy (%) <span class="hint" id="veVal"></span></label>
+        <input id="ve" type="range" min="0" max="100" step="1" value="100" />
+      </div>
+      <div class="cell w4">
+        <label>Vaccination Coverage (%) <span class="hint" id="vaxCovVal">0%</span></label>
+        <input id="vaxCov" type="range" min="0" max="100" step="1" value="0" />
+      </div>
+      <div class="cell w4">
+        <label>Daily Vaccination Rate (%-points/day) <span class="hint" id="vaxRateVal">0.0 pts/day</span></label>
+        <input id="vaxRate" type="range" min="0" max="5" step="0.1" value="0" />
+      </div>
+
+      <!-- ===================== PLAY/PAUSE + RESET ===================== -->
+      <div class="cell w6">
+        <button class="btn" id="toggleBtn" aria-pressed="false">▶ Run</button>
+        <button class="btn ghost" id="resetBtn">Reset</button>
+        <span class="hint">R₀=<span id="R0disp">–</span></span>
+        <span class="hint">· R<sub>t</sub>=<span id="RtDisp">–</span></span>
+        <span class="hint">· t=<span id="timeDisp">0</span> days</span>
+      </div>
+    </div>
+
+    <!-- ===================== Timeline (scrubber with counters) ===================== -->
+    <div class="panel pad timePanel">
+      <div class="scrubWrap">
+        <div class="hint">Viewing: <span id="viewLabel">Live</span></div>
+        <button class="miniBtn" id="liveBtn" title="Jump to latest">Live</button>
+      </div>
+      <div class="scrubWrap">
+        <span class="hint" id="scrubMin">0</span>
+        <input type="range" id="scrubber" min="0" max="0" value="0" />
+        <span class="hint" id="scrubVal">0</span>
+        <span class="hint">/</span>
+        <span class="hint" id="scrubMax">0</span>
+        <span class="hint">days</span>
+      </div>
+    </div>
+
+    <!-- ===================== Simulation & Sidebar ===================== -->
+    <div class="sim" style="margin-top:12px">
+      <div class="canvasWrap panel pad">
+        <canvas id="sim" width="900" height="520" aria-label="Population grid"></canvas>
+      </div>
+      <aside class="sidebar panel">
+        <div class="status">
+          <div class="barsWrap">
+            <div class="bar" aria-label="Status bar">
+              <div class="seg" id="seg-imm"  style="background:var(--c-imm);height:0%"></div>
+              <div class="seg" id="seg-exp"  style="background:var(--c-exp);height:0%"></div>
+              <div class="seg" id="seg-inf"  style="background:var(--c-inf);height:0%"></div>
+              <div class="seg" id="seg-sus"  style="background:var(--c-sus);height:100%"></div>
+              <div class="seg" id="seg-dead" style="background:var(--c-dead);height:0%"></div>
+            </div>
+          </div>
+
+          <div class="legend">
+            <div class="dot" style="background:var(--c-sus)"></div>
+            <div>Susceptible <span id="pctS">100%</span> <span id="cntS" class="cnt">(0)</span></div>
+
+            <div class="dot" style="background:var(--c-exp)"></div>
+            <div>Exposed <span id="pctE">0%</span> <span id="cntE" class="cnt">(0)</span></div>
+
+            <div class="dot" style="background:var(--c-inf)"></div>
+            <div>Infectious <span id="pctI">0%</span> <span id="cntI" class="cnt">(0)</span></div>
+
+            <div class="dot" style="background:var(--c-imm)"></div>
+            <div>Immune <span id="pctR">0%</span> <span id="cntR" class="cnt">(0)</span></div>
+
+            <div class="dot" style="background:var(--c-dead)"></div>
+            <div>Dead <span id="pctD">0%</span> <span id="cntD" class="cnt">(0)</span></div>
+
+            <div class="vaxLegendIcon"></div>
+            <div>
+              Vaccinated &amp; protected
+              <span id="pctVeff">0%</span>
+              <span id="cntVeff" class="cnt">(0)</span>
+            </div>
+
+            <div class="vaxLegendIcon dotted"></div>
+            <div>
+              Vaccinated, not effectively protected
+              <span id="pctVineff">0%</span>
+              <span id="cntVineff" class="cnt">(0)</span>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- ===================== Charts Row ===================== -->
+    <div class="panel pad chartsPanel">
+      <div class="chartsRow">
+        <div class="chartCell">
+          <div class="chartTitle">Incidence, Prevalence &amp; % Vaccinated</div>
+          <p class="chartExplain">
+            <span style="color:var(--c-exp)">Incidence</span>: new cases per time step.
+            <span style="color:var(--accent2)">Prevalence</span>: infectious individuals at each time.
+            <span style="color:var(--accent)">Blue line</span>: percent of the population vaccinated.
+          </p>
+          <canvas
+            id="incVaxChart"
+            class="chartCanvas"
+            aria-label="Incidence, prevalence, and percent vaccinated over time">
+          </canvas>
+        </div>
+        <div class="chartCell">
+          <div class="chartTitle">SEIRD Compartments</div>
+          <p class="chartExplain">
+            Tracks
+            <span style="color:var(--c-sus)">susceptible</span>,
+            <span style="color:var(--c-exp)">exposed</span>,
+            <span style="color:var(--c-inf)">infectious</span>,
+            <span style="color:var(--c-imm)">immune/recovered</span>,
+            and <span style="color:var(--c-dead)">dead</span> over time.
+          </p>
+          <canvas
+            id="sirChart"
+            class="chartCanvas"
+            aria-label="Susceptible, Exposed, Infectious, Immune, Dead over time">
+          </canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== Export ===================== -->
+    <div class="panel pad" style="margin-top:12px">
+      <button class="btn ghost" id="exportCSV">Export Time Series (CSV)</button>
+    </div>
+  </section>
+</main>
+
+<div class="footer">
+  © <span id="year"></span> TapTiger Dev · MIT License
+</div>
+
+<script>
+'use strict';
+(function(){
+  /**
+   * Clamp numeric value to [a, b].
+   * @param {number} x
+   * @param {number} a
+   * @param {number} b
+   */
+  function clamp(x,a,b){return Math.max(a,Math.min(b,x));}
+
+  /** Shorthand DOM query. */
+  const $ = sel => document.querySelector(sel);
+
+  // ===========================================================
+  // THEME & APP BOOTSTRAP
+  // ===========================================================
+  const root = document.documentElement;
+  const storedTheme = localStorage.getItem('sim-theme');
+  root.setAttribute(
+    'data-theme',
+    (storedTheme === 'light' || storedTheme === 'dark') ? storedTheme : 'dark'
+  );
+
+  const themeToggle = $('#themeToggle');
+
+  /** Sync toggle label with current theme. */
+  function syncThemeToggle(){
+    if(!themeToggle) return;
+    const isDark = root.getAttribute('data-theme') !== 'light';
+    themeToggle.innerHTML = isDark
+      ? '<span>☀</span> <span>Light mode</span>'
+      : '<span>🌙</span> <span>Dark mode</span>';
+  }
+
+  if(themeToggle){
+    themeToggle.addEventListener('click', ()=>{
+      const current = root.getAttribute('data-theme') || 'dark';
+      const next = current === 'dark' ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+      localStorage.setItem('sim-theme', next);
+
+      // Repaint visuals for new palette.
+      drawCanvas();
+      drawCharts();
+      syncThemeToggle();
+    });
+  }
+
+  syncThemeToggle();
+
+  // Footer year
+  const yearEl = $('#year');
+  if(yearEl){
+    yearEl.textContent = new Date().getFullYear();
+  }
+
+  // ===========================================================
+  // RNG / DETERMINISM
+  // ===========================================================
+  /**
+   * Seed global Math.random() using a simple LCG.
+   * NOTE: This overrides Math.random for the whole page.
+   * @param {number} s
+   */
+  function setSeed(s){
+    let seed = (s>>>0) || 1;
+    Math.random = function(){
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 2**32;
+    };
+  }
+
+  /** Read CSS variable from :root. */
+  function cssVar(name){
+    return getComputedStyle(document.documentElement)
+      .getPropertyValue(name).trim();
+  }
+
+  /** In-place Fisher–Yates shuffle. */
+  function shuffle(arr){
+    for(let i=arr.length-1;i>0;i--){
+      const j=Math.floor(Math.random()*(i+1));
+      [arr[i],arr[j]]=[arr[j],arr[i]];
+    }
+    return arr;
+  }
+
+  // ===========================================================
+  // MODEL & STATE
+  // ===========================================================
+  /** Discrete health states. */
+  const STATE = {
+    S:0, // Susceptible
+    E:1, // Exposed
+    I:2, // Infectious
+    R:3, // Recovered / Immune
+    D:4  // Dead
+  };
+
+  /**
+   * @typedef {Object} Person
+   * @property {number} col
+   * @property {number} row
+   * @property {number} state - one of STATE
+   * @property {0|1} v - vaccinated flag
+   * @property {0|1} vEff - effective vaccination flag
+   */
+
+  /** Centralized element references. */
+  const els = {
+    scenario:$('#scenario'),
+    N:$('#N'), I0:$('#I0'), R0:$('#R0'), dt:$('#dt'),
+    beta:$('#beta'), gamma:$('#gamma'), mu:$('#mu'), ve:$('#ve'),
+    betaVal:$('#betaVal'), gammaVal:$('#gammaVal'), muVal:$('#muVal'), veVal:$('#veVal'),
+    vaxCov:$('#vaxCov'), vaxCovVal:$('#vaxCovVal'),
+    vaxRate:$('#vaxRate'), vaxRateVal:$('#vaxRateVal'),
+    mutRate:$('#mutRate'), mutRateVal:$('#mutRateVal'),
+    daysInf:$('#daysInf'), daysInfVal:$('#daysInfVal'),
+    stoch:$('#stochastic'), seed:$('#seed'),
+    autoStop:$('#autoStop'),
+    contacts:$('#contacts'),
+    toggle:$('#toggleBtn'), reset:$('#resetBtn'),
+    R0disp:$('#R0disp'), RtDisp:$('#RtDisp'), timeDisp:$('#timeDisp'),
+    simCanvas:$('#sim'),
+    segS:$('#seg-sus'), segE:$('#seg-exp'), segI:$('#seg-inf'),
+    segR:$('#seg-imm'), segD:$('#seg-dead'),
+    pctS:$('#pctS'), pctE:$('#pctE'), pctI:$('#pctI'), pctR:$('#pctR'), pctD:$('#pctD'),
+    cntS:$('#cntS'), cntE:$('#cntE'), cntI:$('#cntI'), cntR:$('#cntR'), cntD:$('#cntD'),
+    pctVeff:$('#pctVeff'), pctVineff:$('#pctVineff'),
+    cntVeff:$('#cntVeff'), cntVineff:$('#cntVineff'),
+    exportCSV:$('#exportCSV'),
+    scrubber:$('#scrubber'), viewLabel:$('#viewLabel'),
+    liveBtn:$('#liveBtn'),
+    scrubMin:$('#scrubMin'),
+    scrubVal:$('#scrubVal'),
+    scrubMax:$('#scrubMax'),
+    NVal:$('#NVal'),
+    incVaxChart:$('#incVaxChart'),
+    sirChart:$('#sirChart')
+  };
+
+  /**
+   * Global simulation state.
+   * All core functions read from & mutate this object.
+   */
+  const State = {
+    // Parameters
+    N:5000,
+    dt:1,
+    beta:0.35,
+    gamma:0.1,
+    mu:0.01,
+    ve:0,
+    I0:5,
+    R0init:0,
+    vaxRate:0,
+    mutRate:0,
+
+    // Runtime
+    t:0,
+    running:false,
+
+    // Layout
+    /** @type {Person[]} */
+    people:[],
+    cols:0,
+    rows:0,
+
+    // Time series
+    series:{
+      t:[], S:[], E:[], I:[], R:[], D:[],
+      inc:[], prev:[], cumInc:[],
+      vAllPct:[], vEffPct:[]
+    },
+
+    // Snapshots per step for scrubbing/branching
+    snapshots:[],
+
+    // Current timeline view index (null = live)
+    viewIndex:null,
+
+    // Auto-stop stability counter
+    stableCounter:0
+  };
+
+  // ===========================================================
+  // AGGREGATES & R(t)
+  // ===========================================================
+  /** Get snapshot for current viewIndex (if any). */
+  function getViewSnapshot(){
+    const idx = State.viewIndex;
+    if (idx != null && State.snapshots[idx]) {
+      return State.snapshots[idx];
+    }
+    return null;
+  }
+
+  /**
+   * Compute S/E/I/R/D and vaccination aggregates for the current view
+   * (either live state or a stored snapshot).
+   */
+  function computeAggregatesFromCurrentView(){
+    const snap = getViewSnapshot();
+    const src = snap || State.people;
+    const N = src.length || 1;
+
+    let S=0,E=0,I=0,R=0,D=0;
+    let vEff=0,vIneff=0;
+
+    for(const p of src){
+      const s = p.state;
+      if(s===STATE.S) S++;
+      else if(s===STATE.E) E++;
+      else if(s===STATE.I) I++;
+      else if(s===STATE.R) R++;
+      else if(s===STATE.D) D++;
+
+      if(p.v){
+        if(p.vEff) vEff++;
+        else vIneff++;
+      }
+    }
+
+    return {N,S,E,I,R,D,vEff,vIneff};
+  }
+
+  /** Push aggregate data into sidebar UI. */
+  function updateSidebarFromAggregates(agg){
+    const { N, S, E, I, R, D, vEff, vIneff } = agg;
+    const pct = x => 100 * x / Math.max(1, N);
+
+    const pS=pct(S), pE=pct(E), pI=pct(I), pR=pct(R), pD=pct(D);
+    const total=(pS+pE+pI+pR+pD) || 1;
+    const k=100/total; // normalize to 100% bar
+
+    const hS=pS*k, hE=pE*k, hI=pI*k, hR=pR*k, hD=pD*k;
+
+    els.segS.style.height=hS+"%";
+    els.segE.style.height=hE+"%";
+    els.segI.style.height=hI+"%";
+    els.segR.style.height=hR+"%";
+    els.segD.style.height=hD+"%";
+
+    els.pctS.textContent=hS.toFixed(0)+"%";
+    els.pctE.textContent=hE.toFixed(0)+"%";
+    els.pctI.textContent=hI.toFixed(0)+"%";
+    els.pctR.textContent=hR.toFixed(0)+"%";
+    els.pctD.textContent=hD.toFixed(0)+"%";
+
+    els.cntS.textContent=`(${S})`;
+    els.cntE.textContent=`(${E})`;
+    els.cntI.textContent=`(${I})`;
+    els.cntR.textContent=`(${R})`;
+    els.cntD.textContent=`(${D})`;
+
+    const pctEff   = pct(vEff);
+    const pctInef  = pct(vIneff);
+
+    if(els.pctVeff)   els.pctVeff.textContent   = pctEff.toFixed(0)+"%";
+    if(els.cntVeff)   els.cntVeff.textContent   = `(${vEff})`;
+    if(els.pctVineff) els.pctVineff.textContent = pctInef.toFixed(0)+"%";
+    if(els.cntVineff) els.cntVineff.textContent = `(${vIneff})`;
+  }
+
+  function updateSidebarCounts(){
+    const agg = computeAggregatesFromCurrentView();
+    updateSidebarFromAggregates(agg);
+  }
+
+  // ===========================================================
+  // VACCINATION HELPERS
+  // ===========================================================
+  function computeVaxStats(){
+    const N = State.people.length || 1;
+    let vAll = 0;
+    for(const p of State.people){
+      if(p.v) vAll++;
+    }
+    return {
+      vAll,
+      vAllPct: 100 * vAll / Math.max(1, N)
+    };
+  }
+
+  /** Sync coverage slider label to actual vaccinated share. */
+  function syncVaxCovSliderToState(){
+    if(!els.vaxCov) return;
+    const { vAllPct } = computeVaxStats();
+    const val = clamp(vAllPct, 0, 100);
+    els.vaxCov.value = val.toFixed(0);
+    if(els.vaxCovVal){
+      els.vaxCovVal.textContent = val.toFixed(0) + "%";
+    }
+  }
+
+  // ===========================================================
+  // R0 / Rt
+  // ===========================================================
+  function computeR0(){
+    const beta=+els.beta.value, gamma=+els.gamma.value;
+    return gamma>0? (beta/gamma):Infinity;
+  }
+
+  /** Update R0 and Rt displays based on current parameters + view. */
+  function updateRDisplaysLive(){
+    if(!els.R0disp || !els.RtDisp) return;
+
+    const R0 = computeR0();
+    els.R0disp.textContent = Number.isFinite(R0) ? R0.toFixed(2) : '∞';
+
+    const agg = computeAggregatesFromCurrentView();
+    const N = agg.N || State.N || 1;
+    const effectivePop = Math.max(1, N - agg.D);
+    const Rt = R0 * (agg.S / effectivePop);
+
+    els.RtDisp.textContent = Number.isFinite(Rt) ? Rt.toFixed(2) : '∞';
+  }
+
+  // ===========================================================
+  // UI SYNC HELPERS
+  // ===========================================================
+  function syncSliders(){
+    if(els.betaVal)  els.betaVal.textContent  = Number(els.beta.value).toFixed(2);
+    if(els.gammaVal) els.gammaVal.textContent = Number(els.gamma.value).toFixed(2);
+    if(els.muVal)    els.muVal.textContent    = Number(els.mu.value).toFixed(3);
+    if(els.veVal)    els.veVal.textContent    = Number(els.ve.value).toFixed(0) + "%";
+
+    if(els.vaxCov && els.vaxCovVal){
+      els.vaxCovVal.textContent = Number(els.vaxCov.value).toFixed(0) + "%";
+    }
+    if(els.vaxRate && els.vaxRateVal){
+      els.vaxRateVal.textContent =
+        Number(els.vaxRate.value).toFixed(1) + " pts/day";
+    }
+    if(els.mutRate && els.mutRateVal){
+      els.mutRateVal.textContent =
+        Number(els.mutRate.value).toFixed(3);
+    }
+    if(els.daysInf && els.daysInfVal){
+      els.daysInfVal.textContent =
+        Number(els.daysInf.value).toFixed(1);
+    }
+    if(els.NVal && els.N){
+      els.NVal.textContent = els.N.value;
+    }
+
+    updateRDisplaysLive();
+  }
+
+  function setToggleRunning(){
+    State.running = true;
+    els.toggle.textContent = '⏸ Pause';
+    els.toggle.setAttribute('aria-pressed','true');
+  }
+
+  function resetToggleToStopped(){
+    State.running = false;
+    els.toggle.textContent = '▶ Run';
+    els.toggle.setAttribute('aria-pressed','false');
+  }
+
+  /** Map "days infectious" slider → gamma (=1/days). */
+  function applyDaysInfToGamma(){
+    if(!els.daysInf || !els.gamma) return;
+    const days = +els.daysInf.value || 10;
+    const g = days > 0 ? (1 / days) : (+els.gamma.value || 0.1);
+    els.gamma.value = g.toFixed(2);
+  }
+
+  // ===========================================================
+  // CHART CANVAS SIZING
+  // ===========================================================
+  function prepareChartCanvas(c){
+    if(!c || !c.parentElement) return;
+    const parent = c.parentElement;
+    const dpr = window.devicePixelRatio || 1;
+
+    let width = parent.clientWidth;
+    if(width <= 0) width = 400;
+
+    let height = Math.max(140, Math.round(width * 0.42));
+
+    const displayWidth = Math.floor(width * dpr);
+    const displayHeight = Math.floor(height * dpr);
+
+    if(c.width !== displayWidth || c.height !== displayHeight){
+      c.width = displayWidth;
+      c.height = displayHeight;
+    }
+
+    c.style.width = width + "px";
+    c.style.height = height + "px";
+  }
+
+  function updateChartLayouts(){
+    prepareChartCanvas(els.incVaxChart);
+    prepareChartCanvas(els.sirChart);
+  }
+
+  // ===========================================================
+  // INITIALIZATION & RESET
+  // ===========================================================
+  /**
+   * Build population, apply initial conditions,
+   * clear time series, redraw everything.
+   */
+  function initPeople(){
+    applyDaysInfToGamma();
+    syncSliders();
+
+    const N = clamp(+els.N.value || 5000, 2, 10000);
+    const I0 = clamp(+els.I0.value || 5, 0, N);
+    const R0init = clamp(+els.R0.value || 0, 0, N - I0);
+
+    // Grid size (simple rectangular layout; hex mode uses same coords)
+    const cols = Math.ceil(Math.sqrt(N)*1.3);
+    const rows = Math.ceil(N / cols);
+
+    State.cols = cols;
+    State.rows = rows;
+
+    // Initialize all as susceptible
+    State.people = new Array(N).fill(0).map((_,i)=>({
+      col:i%cols,
+      row:Math.floor(i/cols),
+      state:STATE.S,
+      v:0,
+      vEff:0
+    }));
+
+    // Assign initial immune (R) and infected (I) w/out overlapping
+    const idxs = shuffle([...Array(N).keys()]);
+
+    for(let i=0;i<R0init && i<idxs.length;i++){
+      State.people[idxs[i]].state = STATE.R;
+    }
+
+    let used = R0init;
+    let assignedI = 0;
+    while(assignedI < I0 && used < idxs.length){
+      const p = State.people[idxs[used]];
+      if(p.state === STATE.S){
+        p.state = STATE.I;
+        assignedI++;
+      }
+      used++;
+    }
+
+    // Reset series and metadata
+    State.N = N;
+    State.I0 = I0;
+    State.R0init = R0init;
+    State.t = 0;
+    State.series = {
+      t:[], S:[], E:[], I:[], R:[], D:[],
+      inc:[], prev:[], cumInc:[],
+      vAllPct:[], vEffPct:[]
+    };
+    State.snapshots = [];
+    State.viewIndex = null;
+    State.stableCounter = 0;
+
+    // Initial vaccination distribution per controls
+    assignVaccinationInitial();
+    syncVaxCovSliderToState();
+
+    // UI reset
+    resetToggleToStopped();
+    els.timeDisp.textContent='0';
+    els.viewLabel.textContent='Live';
+    refreshScrubber();
+    drawCanvas();
+    updateSidebarCounts();
+    drawCharts();
+    updateRDisplaysLive();
+  }
+
+  /** Assign vaccination flags to match coverage & efficacy. */
+  function assignVaccinationInitial(){
+    const cov = (+els.vaxCov.value||0)/100;
+    const ve = (+els.ve.value||0)/100;
+    const N = State.people.length;
+    const k = Math.round(N*cov);
+
+    State.people.forEach(p=>{ p.v=0; p.vEff=0; });
+
+    const idxs = shuffle([...State.people.keys()]);
+    for(let i=0;i<k && i<idxs.length;i++){
+      const p = State.people[idxs[i]];
+      p.v = 1;
+      p.vEff = (Math.random() < ve) ? 1 : 0;
+    }
+  }
+
+  /**
+   * Branch timeline from current or selected snapshot.
+   * Used when sliders change after some simulation history.
+   * @param {{reassignVaccination:boolean}} options
+   */
+  function branchFromCurrent({reassignVaccination}){
+    const len = State.series.t.length;
+    const haveHistory = len>0 && State.snapshots.length>=len;
+
+    // If no usable history, just (optionally) recompute vax and redraw.
+    if(!haveHistory){
+      if(reassignVaccination){
+        assignVaccinationInitial();
+        syncVaxCovSliderToState();
+        drawCanvas();
+        updateSidebarCounts();
+        drawCharts();
+        updateRDisplaysLive();
+      }
+      return;
+    }
+
+    // Choose branch index: either viewed snapshot or last point
+    const idx = (State.viewIndex!=null)
+      ? clamp(State.viewIndex, 0, len-1)
+      : (len-1);
+
+    const snap = State.snapshots[idx];
+    if(!snap) return;
+
+    // Restore snapshot states
+    State.people.forEach((p,i)=>{
+      const s = snap[i];
+      if(!s) return;
+      p.state = s.state;
+      p.v = s.v;
+      p.vEff = s.vEff;
+    });
+
+    // Optionally reassign vaccination under new controls at branch point
+    if(reassignVaccination){
+      const cov = (+els.vaxCov.value||0)/100;
+      const ve = (+els.ve.value||0)/100;
+      const N = State.people.length;
+      const k = Math.round(N*cov);
+
+      State.people.forEach(p=>{ p.v=0; p.vEff=0; });
+      const idxs2 = shuffle([...State.people.keys()]);
+      for(let j=0;j<k && j<idxs2.length;j++){
+        const p = State.people[idxs2[j]];
+        p.v = 1;
+        p.vEff = (Math.random() < ve) ? 1 : 0;
+      }
+    }
+
+    // Truncate all time series & snapshots at branch index
+    Object.keys(State.series).forEach(key=>{
+      State.series[key] = State.series[key].slice(0, idx+1);
+    });
+    State.snapshots = State.snapshots.slice(0, idx+1);
+
+    State.t = State.series.t[idx] || 0;
+    State.viewIndex = null;
+    State.stableCounter = 0;
+
+    syncVaxCovSliderToState();
+    els.viewLabel.textContent = `t=${State.t.toFixed(0)} days`;
+    refreshScrubber();
+    drawCanvas();
+    updateSidebarCounts();
+    drawCharts();
+    updateRDisplaysLive();
+  }
+
+  // ===========================================================
+  // NEIGHBORHOOD LOGIC
+  // ===========================================================
+  /**
+   * Count infectious neighbors for person `p` given:
+   * - `infSet`: Set of "col,row" for infectious individuals
+   * - `contact`: "4" (von Neumann) or "6" (offset hex-like)
+   */
+  function infectiousNeighborCount(p, infSet, contact){
+    const col = p.col;
+    const row = p.row;
+
+    if(contact === '4'){
+      const coords = [
+        [col+1,row],[col-1,row],
+        [col,row+1],[col,row-1]
+      ];
+      let k=0;
+      for(const [c,r] of coords){
+        if(infSet.has(c + "," + r)) k++;
+      }
+      return k;
+    }
+
+    // Hex approximation via row offset
+    const isOdd = (row % 2) === 1;
+    let coords;
+    if(!isOdd){
+      coords = [
+        [col-1,row],[col+1,row],
+        [col,row-1],[col-1,row-1],
+        [col,row+1],[col-1,row+1]
+      ];
+    }else{
+      coords = [
+        [col-1,row],[col+1,row],
+        [col+1,row-1],[col,row-1],
+        [col+1,row+1],[col,row+1]
+      ];
+    }
+    let k=0;
+    for(const [c,r] of coords){
+      if(infSet.has(c + "," + r)) k++;
+    }
+    return k;
+  }
+
+  // ===========================================================
+  // SIMULATION STEP
+  // ===========================================================
+  /**
+   * Advance the system by one dt.
+   * - Applies infection, progression, recovery, death
+   * - Applies mutation (immune loss) and vaccination flow
+   * - Updates time series & snapshots
+   */
+  function step(){
+    const beta    = +els.beta.value;
+    const gamma   = +els.gamma.value;
+    const mu      = +els.mu.value;
+    const dt      = +els.dt.value;
+    const N       = State.people.length;
+    const contact = els.contacts.value || '4';
+
+    const vaxRate = els.vaxRate ? (+els.vaxRate.value || 0) : 0;
+    const mutRate = els.mutRate ? (+els.mutRate.value || 0) : 0;
+    const veFrac  = (+els.ve.value || 0)/100;
+
+    if(!N) return;
+
+    // Snapshot states & build set of infectious positions
+    const curStates = State.people.map(p=>p.state);
+    const infSet = new Set();
+    State.people.forEach((p,i)=>{
+      if(curStates[i]===STATE.I){
+        infSet.add(p.col + "," + p.row);
+      }
+    });
+
+    const newStates = curStates.slice();
+    let newI = 0; // new infectious (incidence) this step
+
+    for(let i=0;i<N;i++){
+      const p = State.people[i];
+      const s = curStates[i];
+
+      if(s===STATE.S){
+        // Susceptible → Exposed
+        if(p.v && p.vEff) continue; // effectively vaccinated blocks infection
+        const kInf = infectiousNeighborCount(p, infSet, contact);
+        if(kInf>0){
+          const prob = 1 - Math.exp(-beta * kInf * dt);
+          if(els.stoch.value==="1"){
+            if(Math.random() < prob) newStates[i] = STATE.E;
+          }else{
+            // In deterministic mode, treat sufficiently large probability as exposure
+            if(prob > 0.01) newStates[i] = STATE.E;
+          }
+        }
+      }
+      else if(s===STATE.E){
+        // Exposed → Infectious
+        // Simple hazard: 0.5/day (tunable if needed)
+        if(Math.random() < 0.5*dt){
+          newStates[i] = STATE.I;
+          newI++;
+        }
+      }
+      else if(s===STATE.I){
+        // Infectious → Recovered or Dead
+        const pr = 1 - Math.exp(-gamma*dt);
+        const pm = 1 - Math.exp(-mu*dt);
+        const u  = Math.random();
+        if(u < pm){
+          newStates[i] = STATE.D;
+        }else if(u < pm + pr){
+          newStates[i] = STATE.R;
+        }
+      }
+    }
+
+    // Mutation: immunity/effective vax may wane -> back to susceptible
+    if(mutRate > 0){
+      const pMut = 1 - Math.exp(-mutRate * dt);
+      for(let i=0;i<N;i++){
+        const st = newStates[i];
+        const person = State.people[i];
+        const isImmune = (st === STATE.R);
+        const isEffVax = (person.v && person.vEff);
+        if(isImmune || isEffVax){
+          if(Math.random() < pMut){
+            newStates[i] = STATE.S;
+            person.v = 0;
+            person.vEff = 0;
+          }
+        }
+      }
+    }
+
+    // Apply updated states
+    for(let i=0;i<N;i++){
+      State.people[i].state = newStates[i];
+    }
+
+    // Daily vaccination increment: vaxRate is %-points/day
+    if(vaxRate > 0){
+      const stepPoints = vaxRate * dt;
+      let targetNew = Math.round((stepPoints/100) * N);
+      if(targetNew > 0){
+        const candidates = [];
+        for(let i=0;i<N;i++){
+          const p = State.people[i];
+          if(p.state !== STATE.D && !p.v){
+            candidates.push(i);
+          }
+        }
+        if(targetNew > candidates.length) targetNew = candidates.length;
+
+        // Shuffle candidates and vaccinate first k
+        for(let i=candidates.length-1;i>0;i--){
+          const j = Math.floor(Math.random()*(i+1));
+          [candidates[i],candidates[j]] = [candidates[j],candidates[i]];
+        }
+
+        for(let k=0;k<targetNew;k++){
+          const idx = candidates[k];
+          const p   = State.people[idx];
+          p.v = 1;
+          p.vEff = (Math.random() < veFrac) ? 1 : 0;
+        }
+      }
+    }
+
+    // Recompute compartments and vax fractions
+    let S=0,E=0,I=0,R=0,D=0;
+    let vAll=0, vEff=0;
+    for(const p of State.people){
+      if(p.state===STATE.S) S++;
+      else if(p.state===STATE.E) E++;
+      else if(p.state===STATE.I) I++;
+      else if(p.state===STATE.R) R++;
+      else if(p.state===STATE.D) D++;
+
+      if(p.v){
+        vAll++;
+        if(p.vEff) vEff++;
+      }
+    }
+
+    const prevT = State.series.t.at(-1) || 0;
+    const tNext = prevT + dt;
+
+    const vAllPct = 100 * vAll / Math.max(1,N);
+    const vEffPct = 100 * vEff / Math.max(1,N);
+
+    State.series.t.push(tNext);
+    State.series.S.push(S);
+    State.series.E.push(E);
+    State.series.I.push(I);
+    State.series.R.push(R);
+    State.series.D.push(D);
+    State.series.inc.push(Math.max(0,newI));
+    State.series.prev.push(I/Math.max(1,N));
+    const cumInc = (N - (State.series.S[0] ?? N) - S)/Math.max(1,N);
+    State.series.cumInc.push(cumInc);
+    State.series.vAllPct.push(vAllPct);
+    State.series.vEffPct.push(vEffPct);
+
+    // Save minimal snapshot for timeline scrubbing
+    State.snapshots.push(
+      State.people.map(p => ({state:p.state, v:p.v, vEff:p.vEff}))
+    );
+
+    // UI updates
+    syncVaxCovSliderToState();
+    updateHeaderStats(tNext);
+    refreshScrubber();
+    drawCanvas();
+    updateSidebarCounts();
+    drawCharts();
+
+    // Auto-stop: once stable (no E or I) for several steps
+    const stableNow = (I === 0 && E === 0);
+    State.stableCounter = stableNow ? State.stableCounter + 1 : 0;
+
+    if(els.autoStop.value==='1' && State.stableCounter>=10){
+      State.running=false;
+      resetToggleToStopped();
+      const timerEl = $('#simTimer');
+      if(timerEl){
+        timerEl.textContent = `t=${tNext.toFixed(0)} days · paused (stable)`;
+      }
+    }
+  }
+
+  /** Update headline time and R(t) readout. */
+  function updateHeaderStats(t){
+    els.timeDisp.textContent = t.toFixed(0);
+    const timerEl = $('#simTimer');
+    if(timerEl){
+      timerEl.textContent = `t=${t.toFixed(0)} days`;
+    }
+    updateRDisplaysLive();
+  }
+
+  // ===========================================================
+  // TIMELINE & DRAWING
+  // ===========================================================
+  /** Render population grid on main canvas. */
+  function drawCanvas(){
+    const c=els.simCanvas;
+    const ctx=c.getContext('2d');
+    const W=c.width, H=c.height;
+
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle=cssVar('--canvas-bg') || '#0e1320';
+    ctx.fillRect(0,0,W,H);
+
+    const N=State.people.length;
+    if(!N) return;
+
+    const cols = State.cols || Math.ceil(Math.sqrt(N));
+    const rows = State.rows || Math.ceil(N/cols);
+    const contact = els.contacts.value || '4';
+
+    const idx = State.viewIndex;
+    const snapshot = (idx!=null && State.snapshots[idx])
+      ? State.snapshots[idx]
+      : null;
+
+    if(contact === '4'){
+      // Simple grid (square neighbors)
+      const cell = Math.min(W/cols, H/rows);
+      const offsetX = (W - cols*cell)/2;
+      const offsetY = (H - rows*cell)/2;
+
+      State.people.forEach((p,i)=>{
+        const state = snapshot ? snapshot[i].state : p.state;
+        const v     = snapshot ? snapshot[i].v     : p.v;
+        const vEff  = snapshot ? snapshot[i].vEff  : p.vEff;
+
+        const x = offsetX + (p.col + 0.5)*cell;
+        const y = offsetY + (p.row + 0.5)*cell;
+        const r = Math.max(2, cell*0.30);
+
+        ctx.fillStyle=getColor(state);
+        ctx.beginPath();
+        ctx.arc(x,y,r,0,Math.PI*2);
+        ctx.fill();
+
+        if(v){
+          ctx.strokeStyle = cssVar('--vax-eff');
+          ctx.lineWidth = 1;
+          if(vEff){ ctx.setLineDash([]); }
+          else{ ctx.setLineDash([3,3]); }
+          ctx.beginPath();
+          ctx.arc(x,y,r+2,0,Math.PI*2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      });
+    } else {
+      // Hex-ish layout using offset rows
+      const colsHex = cols;
+      const rowsHex = rows;
+      const baseWUnits = 2 + 1.5*(colsHex - 1) + 0.75;
+      const baseHUnits = 2 + (rowsHex - 1)*Math.sqrt(3);
+      const r = Math.max(2, Math.min(W/baseWUnits, H/baseHUnits));
+      const w = 1.5 * r;
+      const h = Math.sqrt(3) * r;
+
+      const totalW = 2*r + (colsHex - 1)*w + 0.5*w;
+      const totalH = 2*r + (rowsHex - 1)*h;
+      const offsetX = (W - totalW)/2;
+      const offsetY = (H - totalH)/2;
+
+      State.people.forEach((p,i)=>{
+        const state = snapshot ? snapshot[i].state : p.state;
+        const v     = snapshot ? snapshot[i].v     : p.v;
+        const vEff  = snapshot ? snapshot[i].vEff  : p.vEff;
+
+        const row = p.row;
+        const col = p.col;
+
+        const x = offsetX + r + col*w + (row%2 ? w/2 : 0);
+        const y = offsetY + r + row*h;
+        const rr = r*0.5;
+
+        ctx.fillStyle = getColor(state);
+        ctx.beginPath();
+        ctx.arc(x,y,rr,0,Math.PI*2);
+        ctx.fill();
+
+        if(v){
+          ctx.strokeStyle = cssVar('--vax-eff');
+          ctx.lineWidth = 1;
+          if(vEff){ ctx.setLineDash([]); }
+          else{ ctx.setLineDash([3,3]); }
+          ctx.beginPath();
+          ctx.arc(x,y,rr+2,0,Math.PI*2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      });
+    }
+  }
+
+  /** Map state → color via CSS vars. */
+  function getColor(state){
+    if(state===STATE.S) return cssVar('--c-sus');
+    if(state===STATE.E) return cssVar('--c-exp');
+    if(state===STATE.I) return cssVar('--c-inf');
+    if(state===STATE.R) return cssVar('--c-imm');
+    return cssVar('--c-dead');
+  }
+
+  /** Update scrubber range/labels. */
+  function refreshScrubber(){
+    const len = State.series.t.length;
+    const maxIndex = Math.max(0, len-1);
+    els.scrubber.max = String(maxIndex);
+
+    if(State.viewIndex==null){
+      els.scrubber.value = String(maxIndex);
+    }
+
+    const lastT = len ? (State.series.t[maxIndex] || 0) : 0;
+    if(els.scrubMin) els.scrubMin.textContent = "0";
+    if(els.scrubMax) els.scrubMax.textContent = lastT.toFixed(0);
+
+    const currentIdx = (State.viewIndex!=null) ? State.viewIndex : maxIndex;
+    const currentT = (len && currentIdx>=0)
+      ? (State.series.t[currentIdx] || 0)
+      : 0;
+    if(els.scrubVal) els.scrubVal.textContent = currentT.toFixed(0);
+  }
+
+  /** Animation loop: only advances when State.running is true. */
+  function loop(){
+    if(!State.running) return;
+    step();
+    requestAnimationFrame(loop);
+  }
+
+  // ===========================================================
+  // CHARTS (Canvas-based)
+  // ===========================================================
+  function drawCharts(){
+    updateChartLayouts();
+    drawIncVaxChart();
+    drawSIRChart();
+  }
+
+  /** Incidence + prevalence + vaccination chart. */
+  function drawIncVaxChart(){
+    const c = els.incVaxChart;
+    if(!c) return;
+    const ctx = c.getContext('2d');
+    const W = c.width;
+    const H = c.height;
+
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle = cssVar('--canvas-bg') || "#0e1320";
+    ctx.fillRect(0,0,W,H);
+
+    const s = State.series;
+    const len = s.t.length;
+    const upto = (State.viewIndex != null)
+      ? Math.min(State.viewIndex, len-1)
+      : len-1;
+
+    const padL = 52;
+    const padR = 42;
+    const padT = 16;
+    const padB = 24;
+    const plotW = W - padL - padR;
+    const plotH = H - padT - padB;
+
+    // Axis labels
+    ctx.fillStyle = cssVar('--muted');
+    ctx.font = "10px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText("Time (days)", padL + plotW/2, H - 10);
+
+    ctx.save();
+    ctx.translate(14, padT + plotH/2);
+    ctx.rotate(-Math.PI/2);
+    ctx.textAlign = "center";
+    ctx.fillText("Count (incidence & prevalence)", 0, 0);
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(W - 10, padT + plotH/2);
+    ctx.rotate(-Math.PI/2);
+    ctx.textAlign = "center";
+    ctx.fillText("% Vaccinated", 0, 0);
+    ctx.restore();
+
+    if(len === 0 || upto < 0 || plotW <= 0 || plotH <= 0){
+      // Empty axes placeholder
+      ctx.strokeStyle = "rgba(255,255,255,0.18)";
+      ctx.beginPath();
+      ctx.moveTo(padL, padT);
+      ctx.lineTo(padL, H - padB);
+      ctx.lineTo(W - padR, H - padB);
+      ctx.stroke();
+      return;
+    }
+
+    const maxT = s.t[upto] || 1;
+    const maxInc = Math.max(0, ...s.inc.slice(0, upto+1));
+    const maxPrev = Math.max(0, ...s.I.slice(0, upto+1));
+    const maxLeft = Math.max(1, maxInc, maxPrev);
+
+    const xForIndex = i =>
+      padL + (s.t[i] / maxT) * plotW;
+
+    const yForLeft = v =>
+      (H - padB) - (v / maxLeft) * plotH;
+
+    const yForPct = pct =>
+      (H - padB) - (pct / 100) * plotH;
+
+    // Grid + ticks
+    ctx.strokeStyle = "rgba(255,255,255,0.06)";
+    ctx.fillStyle = cssVar('--muted');
+    ctx.font = "9px system-ui";
+
+    const xTicks = 5;
+    ctx.textAlign = "center";
+    for(let i=0;i<=xTicks;i++){
+      const frac = i/xTicks;
+      const tVal = frac * maxT;
+      const x = padL + frac * plotW;
+
+      ctx.beginPath();
+      ctx.moveTo(x, padT);
+      ctx.lineTo(x, H - padB);
+      ctx.stroke();
+
+      ctx.fillText(tVal.toFixed(0), x, H - 12);
+    }
+
+    const yTicks = 4;
+    ctx.textAlign = "right";
+    for(let i=0;i<=yTicks;i++){
+      const frac = i/yTicks;
+      const v = maxLeft * (1 - frac);
+      const y = padT + frac * plotH;
+
+      ctx.beginPath();
+      ctx.moveTo(padL, y);
+      ctx.lineTo(W - padR, y);
+      ctx.stroke();
+
+      ctx.fillText(v.toFixed(0), padL - 4, y + 3);
+    }
+
+    // Right axis (percent vaccinated)
+    ctx.textAlign = "left";
+    for(let i=0;i<=yTicks;i++){
+      const frac = i/yTicks;
+      const pct = 100 * (1 - frac);
+      const y = padT + frac * plotH;
+      ctx.fillText(pct.toFixed(0), W - padR + 4, y + 3);
+    }
+
+    // Axes
+    ctx.strokeStyle = "rgba(255,255,255,0.18)";
+    ctx.beginPath();
+    ctx.moveTo(padL, padT);
+    ctx.lineTo(padL, H - padB);
+    ctx.lineTo(W - padR, H - padB);
+    ctx.stroke();
+
+    // Incidence line
+    ctx.strokeStyle = cssVar('--c-exp');
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    for(let i=0;i<=upto;i++){
+      const x = xForIndex(i);
+      const y = yForLeft(s.inc[i] || 0);
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+
+    // Prevalence line (using I counts)
+    ctx.strokeStyle = cssVar('--accent2');
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    for(let i=0;i<=upto;i++){
+      const x = xForIndex(i);
+      const y = yForLeft(s.I[i] || 0);
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+
+    // Vaccination coverage (%)
+    if(s.vAllPct && s.vAllPct.length){
+      ctx.strokeStyle = cssVar('--accent');
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      for(let i=0;i<=upto;i++){
+        const x = xForIndex(i);
+        const y = yForPct(s.vAllPct[i] || 0);
+        if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      ctx.stroke();
+    }
+  }
+
+  /** SEIRD compartments chart. */
+  function drawSIRChart(){
+    const c = els.sirChart;
+    if(!c) return;
+    const ctx = c.getContext('2d');
+    const W = c.width;
+    const H = c.height;
+
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle = cssVar('--canvas-bg') || "#0e1320";
+    ctx.fillRect(0,0,W,H);
+
+    const s = State.series;
+    const len = s.t.length;
+    const upto = (State.viewIndex != null)
+      ? Math.min(State.viewIndex, len-1)
+      : len-1;
+
+    const padL = 42, padR = 10, padT = 16, padB = 24;
+    const plotW = W - padL - padR;
+    const plotH = H - padT - padB;
+
+    // Axis labels
+    ctx.fillStyle = cssVar('--muted');
+    ctx.font = "10px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText("Time (days)", padL + plotW/2, H - 10);
+
+    ctx.save();
+    ctx.translate(10, padT + plotH/2);
+    ctx.rotate(-Math.PI/2);
+    ctx.textAlign = "center";
+    ctx.fillText("Individuals", 0, 0);
+    ctx.restore();
+
+    if(len === 0 || upto < 0 || plotW <= 0 || plotH <= 0){
+      ctx.strokeStyle = "rgba(255,255,255,0.18)";
+      ctx.beginPath();
+      ctx.moveTo(padL, padT);
+      ctx.lineTo(padL, H - padB);
+      ctx.lineTo(W - padR, H - padB);
+      ctx.stroke();
+      return;
+    }
+
+    const maxT = s.t[upto] || 1;
+    const N = State.N || 1;
+
+    const xForIndex = i =>
+      padL + (s.t[i] / maxT) * plotW;
+
+    const yForVal = v =>
+      (H - padB) - (v / Math.max(1,N)) * plotH;
+
+    // Grid + ticks
+    ctx.strokeStyle = "rgba(255,255,255,0.06)";
+    ctx.fillStyle = cssVar('--muted');
+    ctx.font = "9px system-ui";
+
+    const xTicks = 5;
+    ctx.textAlign = "center";
+    for(let i=0;i<=xTicks;i++){
+      const frac = i/xTicks;
+      const tVal = frac * maxT;
+      const x = padL + frac * plotW;
+      ctx.beginPath();
+      ctx.moveTo(x, padT);
+      ctx.lineTo(x, H - padB);
+      ctx.stroke();
+      ctx.fillText(tVal.toFixed(0), x, H - 12);
+    }
+
+    const yTicks = 4;
+    ctx.textAlign = "right";
+    for(let i=0;i<=yTicks;i++){
+      const frac = i/yTicks;
+      const v = N * (1 - frac);
+      const y = padT + frac * plotH;
+      ctx.beginPath();
+      ctx.moveTo(padL, y);
+      ctx.lineTo(W - padR, y);
+      ctx.stroke();
+      ctx.fillText(v.toFixed(0), padL - 4, y + 3);
+    }
+
+    // Axes
+    ctx.strokeStyle = "rgba(255,255,255,0.18)";
+    ctx.beginPath();
+    ctx.moveTo(padL, padT);
+    ctx.lineTo(padL, H - padB);
+    ctx.lineTo(W - padR, H - padB);
+    ctx.stroke();
+
+    // Helper to draw one compartment
+    function plot(arr, colorVar){
+      if(!arr || !arr.length) return;
+      ctx.strokeStyle = cssVar(colorVar);
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      for(let i=0;i<=upto;i++){
+        const x = xForIndex(i);
+        const y = yForVal(arr[i] || 0);
+        if(i===0) ctx.moveTo(x,y);
+        else ctx.lineTo(x,y);
+      }
+      ctx.stroke();
+    }
+
+    plot(s.S, '--c-sus');
+    plot(s.E, '--c-exp');
+    plot(s.I, '--c-inf');
+    plot(s.R, '--c-imm');
+    plot(s.D, '--c-dead');
+  }
+
+  // ===========================================================
+  // EVENTS & UI WIRING
+  // ===========================================================
+  els.scenario.addEventListener('change', e=> applyScenario(e.target.value));
+
+  /**
+   * Apply preset scenario values and reinitialize the model.
+   * Presets are illustrative; not calibrated epidemiology.
+   */
+  function applyScenario(name){
+    const presets = {
+      rare: {
+        N: 5000,
+        I0: 1,
+        beta: 0.12,
+        gamma: 0.20,
+        mu: 0.005
+      },
+      endemic: {
+        N: 5000,
+        I0: 10,
+        beta: 0.18,
+        gamma: 0.18,
+        mu: 0.002
+      },
+      outbreak: {
+        N: 5000,
+        I0: 5,
+        beta: 0.55,
+        gamma: 0.10,
+        mu: 0.01
+      },
+      flu: {
+        // Flu-like
+        N: 5000,
+        I0: 3,
+        beta: 0.32,
+        gamma: 0.14,
+        mu: 0.004
+      },
+      covid: {
+        // Early-pandemic style toy params
+        N: 5000,
+        I0: 5,
+        beta: 0.45,
+        gamma: 0.08,
+        mu: 0.006
+      },
+      // Disease-flavored presets
+      measles: {
+        N: 5000,
+        I0: 3,
+        beta: 1.10,
+        gamma: 0.14,
+        mu: 0.0005,
+        vaxCov: 70,
+        ve: 97
+      },
+      ebola: {
+        N: 5000,
+        I0: 2,
+        beta: 0.25,
+        gamma: 0.14,
+        mu: 0.12,
+        vaxCov: 0,
+        ve: 0
+      },
+      sars1: {
+        N: 5000,
+        I0: 3,
+        beta: 0.30,
+        gamma: 0.14,
+        mu: 0.02
+      },
+      mers: {
+        N: 5000,
+        I0: 3,
+        beta: 0.14,
+        gamma: 0.14,
+        mu: 0.08
+      },
+      noro: {
+        N: 5000,
+        I0: 5,
+        beta: 0.70,
+        gamma: 0.40,
+        mu: 0.0001
+      }
+    };
+
+    const p = presets[name];
+    if (p) {
+      if (p.N      != null) els.N.value      = p.N;
+      if (p.I0     != null) els.I0.value     = p.I0;
+      if (p.beta   != null) els.beta.value   = p.beta;
+      if (p.gamma  != null) els.gamma.value  = p.gamma;
+      if (p.mu     != null) els.mu.value     = p.mu;
+
+      // Keep "days infectious" slider consistent if gamma is set.
+      if (p.gamma != null && els.daysInf) {
+        const days = p.gamma > 0 ? (1 / p.gamma) : 10;
+        els.daysInf.value = days.toFixed(1);
+      }
+
+      // Optional vaccination assumptions
+      if (p.vaxCov != null && els.vaxCov) {
+        els.vaxCov.value = p.vaxCov;
+      }
+      if (p.ve != null && els.ve) {
+        els.ve.value = p.ve;
+      }
+    }
+
+    syncSliders();
+    initPeople();
+  }
+
+  // Core inputs that trigger a full reset when changed.
+  [
+    els.N, els.I0, els.R0, els.dt,
+    els.stoch, els.seed,
+    els.autoStop, els.contacts,
+    els.daysInf
+  ].forEach(input=>{
+    if(!input) return;
+    input.addEventListener('change', ()=>{
+      if(input === els.seed){
+        setSeed(+els.seed.value || 42);
+      }
+      initPeople();
+    });
+  });
+
+  // Live update on N slider movement.
+  if(els.N){
+    els.N.addEventListener('input', ()=>{
+      if(els.NVal){
+        els.NVal.textContent = els.N.value;
+      }
+      initPeople();
+    });
+  }
+
+  // Parameter sliders that should branch from history without full re-init.
+  ['beta','gamma','mu'].forEach(id=>{
+    const el = els[id];
+    if(!el) return;
+    el.addEventListener('input', ()=>{
+      syncSliders();
+      branchFromCurrent({reassignVaccination:false});
+    });
+  });
+
+  // Vaccination coverage/efficacy -> may reassign vaccination distribution.
+  ['ve','vaxCov'].forEach(id=>{
+    const el = els[id];
+    if(!el) return;
+    el.addEventListener('input', ()=>{
+      syncSliders();
+      branchFromCurrent({reassignVaccination:true});
+    });
+  });
+
+  // Vaccination rate & mutation rate -> change dynamics going forward.
+  ['vaxRate','mutRate'].forEach(id=>{
+    const el = els[id];
+    if(!el) return;
+    el.addEventListener('input', ()=>{
+      syncSliders();
+      branchFromCurrent({reassignVaccination:false});
+    });
+  });
+
+  // Play / Pause button
+  els.toggle.addEventListener('click', ()=>{
+    if(State.running){
+      resetToggleToStopped();
+    }else{
+      // If user is inspecting history, branch before resuming.
+      if(State.viewIndex != null){
+        branchFromCurrent({reassignVaccination:false});
+      }
+      setToggleRunning();
+      loop();
+    }
+  });
+
+  // Reset button
+  els.reset.addEventListener('click', ()=>{
+    setSeed(+els.seed.value || 42);
+    initPeople();
+  });
+
+  // Timeline scrubber
+  els.scrubber.addEventListener('input', ()=>{
+    const vIndex = parseInt(els.scrubber.value,10)||0;
+    State.viewIndex = vIndex;
+    const tVal = State.series.t[vIndex] ?? 0;
+
+    els.viewLabel.textContent = State.series.t.length
+      ? `t=${(tVal||0).toFixed(0)} days`
+      : 'Live';
+
+    if(els.scrubVal) els.scrubVal.textContent = (tVal||0).toFixed(0);
+
+    if(State.series.t.length && els.scrubMax){
+      const last = State.series.t[State.series.t.length-1] || 0;
+      els.scrubMax.textContent = last.toFixed(0);
+    }
+
+    drawCanvas();
+    updateSidebarCounts();
+    drawCharts();
+    updateRDisplaysLive();
+  });
+
+  // Jump back to live state
+  els.liveBtn.addEventListener('click', ()=>{
+    State.viewIndex = null;
+    refreshScrubber();
+    els.viewLabel.textContent = 'Live';
+    drawCanvas();
+    updateSidebarCounts();
+    drawCharts();
+    updateRDisplaysLive();
+  });
+
+  // Export time series as CSV
+  els.exportCSV.addEventListener('click', ()=>{
+    const rows=[["t","S","E","I","R","D","inc","prev","cumInc"]];
+    const s=State.series;
+    for(let i=0;i<s.t.length;i++){
+      rows.push([
+        s.t[i],s.S[i],s.E[i],s.I[i],
+        s.R[i],s.D[i],s.inc[i],
+        s.prev[i],s.cumInc[i]
+      ]);
+    }
+    const csv = rows.map(r=>r.join(',')).join('\n');
+    const blob = new Blob([csv],{type:'text/csv'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='simulation_timeseries.csv';
+    a.click();
+  });
+
+  // Redraw charts on resize (no heavy debouncing needed here)
+  window.addEventListener('resize', drawCharts);
+
+  // ===========================================================
+  // BOOTSTRAP
+  // ===========================================================
+  syncSliders();
+  setSeed(+els.seed.value || 42);
+  initPeople();
+})();
+</script>
+</body>
+</html>
