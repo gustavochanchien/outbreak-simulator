@@ -2,6 +2,9 @@
 
 https://gustavochanchien.github.io/outbreak-simulator/
 
+![Simulation overview](sim1.png)
+![Simulation timeline and charts](sim2.png)
+
 Interactive, browser-based SIR-style outbreak simulator with vaccination, mutation, and time manipulation.  
 Runs entirely in your browser — no backend, no dependencies.
 
