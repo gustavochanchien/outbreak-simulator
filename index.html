@@ -7,25 +7,26 @@
 
   <!--
     ==============================================================
-    Outbreak Simulator (cleaned & commented)
+    Outbreak Simulator
     --------------------------------------------------------------
-    What this file contains
     - Single-file demo app (HTML + CSS + JS)
     - Deterministic grid-based SEIRD toy model with vaccination
     - No external dependencies; runs fully in-browser
 
-    Key concepts for new developers
+    Key implementation notes
     - State is stored in a central `State` object.
     - `step()` advances the simulation one dt.
     - `drawCanvas()` renders the population grid.
     - `drawCharts()` renders time-series charts for incidence and SEIRD.
-    - UI wiring lives at the bottom in the Events section.
+    - UI wiring is in the Events section.
 
-    Determinism
-    - `setSeed()` overwrites `Math.random` with a simple LCG to allow
-      reproducible runs given the same seed. If you need a safer or
-      scoped RNG behavior, replace this with a local PRNG instance
-      instead of touching `Math.random` globally.
+    Epidemiologic caveats (A/B/C addressed):
+    - Cumulative incidence, incidence rate, and CFR now use a tracked
+      "ever infected" count based on S→E transitions (unique persons),
+      stable under waning/reinfection.
+    - R0 and Rt shown are clearly labeled as theoretical/approximate
+      (mass-action SIR-style) for intuition only.
+    - "Risk rate" label clarified as "Average risk per day".
     ==============================================================
   -->
 
@@ -97,7 +98,7 @@
       --pill-bg:#f3f4f6;
     }
 
-        /* Semantic text colors mapped to existing palette */
+    /* Semantic text colors mapped to existing palette */
     .color-sus   { color: var(--c-sus); }
     .color-exp   { color: var(--c-exp); }
     .color-inf   { color: var(--c-inf); }
@@ -105,10 +106,9 @@
     .color-dead  { color: var(--c-dead); }
 
     .color-vax   { color: var(--accent); }
-    .color-inc   { color: var(--c-exp); }     /* incidence line */
-    .color-prev  { color: var(--accent2); }   /* prevalence line */
+    .color-inc   { color: var(--c-exp); }
+    .color-prev  { color: var(--accent2); }
 
-    /* Small color swatch used in labels so they visually match charts/legend */
     .swatch {
       display: inline-block;
       width: 8px;
@@ -123,7 +123,6 @@
     .swatch-inf  { background: var(--c-inf); }
     .swatch-dead { background: var(--c-dead); }
 
-    /* Light structural hint so rows feel grouped with their measure */
     .metricRow-inc th,
     .metricRow-inc td.val {
       color: var(--c-exp);
@@ -137,13 +136,10 @@
       color: var(--accent);
     }
 
-    /* Make formulas readable but slightly softer */
     .metricsTable td.formula {
       color: var(--muted);
       opacity: 0.9;
     }
-
-
 
     /* ======================= BASE LAYOUT ========================= */
     * { box-sizing:border-box; }
@@ -193,7 +189,6 @@
       font-size:13px;
     }
 
-    /* Theme toggle button */
     #themeToggle {
       position:absolute;
       top:14px;
@@ -212,7 +207,6 @@
     }
     #themeToggle span { font-size:13px; }
 
-    /* Header timer pill */
     #simTimer {
       position:absolute;
       right:16px;
@@ -251,7 +245,6 @@
       color:var(--muted);
       margin:2px 0 6px;
     }
-
 
     input[type="number"],
     select {
@@ -573,7 +566,6 @@
       border-color: var(--accent2);
     }
 
-
     @media (max-width:900px){
       .sim { grid-template-columns:1fr; }
       #simTimer {
@@ -593,10 +585,11 @@
 
     <h1>Outbreak Epidemiology Disease Simulator</h1>
     <div class="sub">
-      Simulation of disease outbreaks. Adjust infection rate, mutation, mortality, vaccination, and more to see how dynamics evolve.
-      Runs fully in your browser, so you can open multiple windows with the same seed to compare alternate timelines, inspect charts,
-      or export the data as CSV for your own analysis.
+      Simulation of disease outbreaks using a toy SEIRD-style model with vaccination and waning immunity.
+      Parameter sets are illustrative, not calibrated for policy decisions. Use as a learning sandbox to
+      explore how changing transmission, duration, mortality, and vaccination assumptions alters dynamics.
     </div>
+    <div id="simTimer" class="pill">t=0 days</div>
   </div>
 </header>
 
@@ -612,12 +605,12 @@
           <option value="endemic">Endemic Stability</option>
           <option value="outbreak">Acute Outbreak</option>
           <option value="flu">Flu-like</option>
-          <option value="covid">COVID-like</option>
-          <option value="measles">Measles-like</option>
-          <option value="ebola">Ebola-like</option>
-          <option value="sars1">SARS-1-like</option>
-          <option value="mers">MERS-like</option>
-          <option value="noro">Norovirus-like</option>
+          <option value="covid">COVID-like (toy)</option>
+          <option value="measles">Measles-like (toy)</option>
+          <option value="ebola">Ebola-like (toy)</option>
+          <option value="sars1">SARS-1-like (toy)</option>
+          <option value="mers">MERS-like (toy)</option>
+          <option value="noro">Norovirus-like (toy)</option>
         </select>
       </div>
 
@@ -667,7 +660,7 @@
 
       <div class="cell w2">
         <label>
-          Mutation Rate (immune → susceptible / day)
+          Mutation / waning (immune → susceptible / day)
           <span class="hint" id="mutRateVal">0.000</span>
         </label>
         <input id="mutRate" type="range" min="0" max="0.5" step="0.005" value="0" />
@@ -730,8 +723,12 @@
       <div class="cell w6">
         <button class="btn" id="toggleBtn" aria-pressed="false">▶ Run</button>
         <button class="btn ghost" id="resetBtn">Reset</button>
-        <span class="hint">R₀=<span id="R0disp">–</span></span>
-        <span class="hint">· R<sub>t</sub>=<span id="RtDisp">–</span></span>
+        <span class="hint">
+          R₀ (theoretical)=<span id="R0disp">–</span>
+        </span>
+        <span class="hint">
+          · R<sub>t</sub> (approx)=<span id="RtDisp">–</span>
+        </span>
         <span class="hint">· t=<span id="timeDisp">0</span> days</span>
       </div>
     </div>
@@ -809,9 +806,9 @@
         <div class="chartCell">
           <div class="chartTitle">Incidence, Prevalence &amp; % Vaccinated</div>
           <p class="chartExplain">
-            <span style="color:var(--c-exp)">Incidence</span>: new cases per time step.
+            <span style="color:var(--c-exp)">Incidence</span>: new infections per time step (S→E).
             <span style="color:var(--accent2)">Prevalence</span>: infectious individuals at each time.
-            <span style="color:var(--accent)">Blue line</span>: percent of the population vaccinated.
+            <span style="color:var(--accent)">Blue line</span>: percent of the population ever vaccinated (toy).
           </p>
           <canvas
             id="incVaxChart"
@@ -838,11 +835,11 @@
       </div>
     </div>
 
-        <!-- ===================== Epidemiologic Metrics ===================== -->
+    <!-- ===================== Epidemiologic Metrics ===================== -->
     <div class="panel pad metricsPanel">
       <div class="metricsTitle">Epidemiologic Summary at Viewed Time</div>
       <div class="metricsSub">
-        Values update with the timeline scrubber or Live view.
+        Uses tracked incident infections (S→E) for cumulative incidence, incidence rate, and CFR.
       </div>
 
       <div class="metricsGrid">
@@ -871,110 +868,99 @@
         </div>
 
         <!-- Block 2: Incidence-style measures -->
-<div class="metricsBlock">
-  <div class="metricsBlockTitle">
-    <span class="tag tag-inc">
-      Incidence &amp; Risk
-    </span>
-  </div>
-  <table class="metricsTable">
-    <tbody>
-      <tr class="metricRow-inc">
-        <th>
-          Cumulative incidence (risk)
-        </th>
-        <td id="m-cumInc" class="val"></td>
-        <td class="formula">
-          <span class="color-inc">New infections(0→t)</span>
-          /
-          <span class="color-sus">at-risk at start</span>
-        </td>
-      </tr>
+        <div class="metricsBlock">
+          <div class="metricsBlockTitle">
+            <span class="tag tag-inc">
+              Incidence &amp; Risk
+            </span>
+          </div>
+          <table class="metricsTable">
+            <tbody>
+              <tr class="metricRow-inc">
+                <th>
+                  Cumulative incidence (risk)
+                </th>
+                <td id="m-cumInc" class="val"></td>
+                <td class="formula">
+                  Incident infections(0→t)
+                  /
+                  at-risk at start (N − I₀ − immune₀)
+                </td>
+              </tr>
 
-      <tr class="metricRow-inc">
-        <th>Incidence risk</th>
-        <td id="m-incRisk" class="val"></td>
-        <td class="formula">
-          Same as cumulative incidence over [0, t]
-        </td>
-      </tr>
+              <tr class="metricRow-inc">
+                <th>Incidence risk</th>
+                <td id="m-incRisk" class="val"></td>
+                <td class="formula">
+                  Same as cumulative incidence over [0, t]
+                </td>
+              </tr>
 
-      <tr class="metricRow-inc">
-        <th>Risk rate</th>
-        <td id="m-riskRate" class="val"></td>
-        <td class="formula">
-          <span class="color-inc">Cumulative incidence</span>
-          / time interval
-        </td>
-      </tr>
+              <tr class="metricRow-inc">
+                <th>Average risk per day</th>
+                <td id="m-riskRate" class="val"></td>
+                <td class="formula">
+                  Cumulative incidence / time interval
+                </td>
+              </tr>
 
-      <tr class="metricRow-inc">
-        <th>Incidence rate</th>
-        <td id="m-incRate" class="val"></td>
-        <td class="formula">
-          <span class="color-inc">New infections(0→t)</span>
-          /
-          <span class="color-sus">person-time at risk</span>
-        </td>
-      </tr>
-    </tbody>
-  </table>
-</div>
+              <tr class="metricRow-inc">
+                <th>Incidence rate</th>
+                <td id="m-incRate" class="val"></td>
+                <td class="formula">
+                  Incident infections(0→t)
+                  /
+                  person-time at risk
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
-<!-- Block 3: Prevalence -->
-<div class="metricsBlock">
-  <div class="metricsBlockTitle">
-    <span class="tag tag-prev">
-      Prevalence
-    </span>
-  </div>
-  <table class="metricsTable">
-    <tbody>
-      <tr class="metricRow-prev">
-        <th>
-          Point prevalence (infectious)
-        </th>
-        <td id="m-prevPoint" class="val"></td>
-        <td class="formula">
-          <span class="color-inf">Infectious(t)</span>
-          /
-          <span>alive(t)</span>
-        </td>
-      </tr>
+        <!-- Block 3: Prevalence & severity -->
+        <div class="metricsBlock">
+          <div class="metricsBlockTitle">
+            <span class="tag tag-prev">
+              Prevalence &amp; Severity
+            </span>
+          </div>
+          <table class="metricsTable">
+            <tbody>
+              <tr class="metricRow-prev">
+                <th>
+                  Point prevalence (infectious)
+                </th>
+                <td id="m-prevPoint" class="val"></td>
+                <td class="formula">
+                  Infectious(t) / alive(t)
+                </td>
+              </tr>
 
-      <tr>
-        <th>
-          Cumulative infected (count)
-        </th>
-        <td id="m-everInf" class="val color-inc"></td>
-        <td class="formula">
-          Ever in <span class="color-exp">E</span>,
-          <span class="color-inf">I</span>,
-          <span class="color-imm">R</span>, or
-          <span class="color-dead">D</span>
-        </td>
-      </tr>
+              <tr>
+                <th>
+                  Ever infected (unique, simulated)
+                </th>
+                <td id="m-everInf" class="val color-inc"></td>
+                <td class="formula">
+                  Individuals with ≥1 S→E since start
+                </td>
+              </tr>
 
-      <tr class="metricRow-severe">
-        <th>
-          Case fatality risk (toy)
-        </th>
-        <td id="m-cfr" class="val color-dead"></td>
-        <td class="formula">
-          <span class="color-dead">Deaths(t)</span>
-          /
-          <span class="color-inc">ever infected(0→t)</span>
-        </td>
-      </tr>
-    </tbody>
-  </table>
-</div>
-
-
+              <tr class="metricRow-severe">
+                <th>
+                  Case fatality risk (toy)
+                </th>
+                <td id="m-cfr" class="val color-dead"></td>
+                <td class="formula">
+                  Deaths(t) / ever infected (incident)
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
       </div>
     </div>
-
 
     <!-- ===================== Export ===================== -->
     <div class="panel pad" style="margin-top:12px">
@@ -984,21 +970,13 @@
 </main>
 
 <div class="footer">
-  © <span id="year"></span> TapTiger Dev · MIT License
+  © <span id="year"></span> TapTiger Dev · MIT License · For teaching use only
 </div>
 
 <script>
 'use strict';
 (function(){
-  /**
-   * Clamp numeric value to [a, b].
-   * @param {number} x
-   * @param {number} a
-   * @param {number} b
-   */
   function clamp(x,a,b){return Math.max(a,Math.min(b,x));}
-
-  /** Shorthand DOM query. */
   const $ = sel => document.querySelector(sel);
 
   // ===========================================================
@@ -1013,7 +991,6 @@
 
   const themeToggle = $('#themeToggle');
 
-  /** Sync toggle label with current theme. */
   function syncThemeToggle(){
     if(!themeToggle) return;
     const isDark = root.getAttribute('data-theme') !== 'light';
@@ -1028,8 +1005,6 @@
       const next = current === 'dark' ? 'light' : 'dark';
       root.setAttribute('data-theme', next);
       localStorage.setItem('sim-theme', next);
-
-      // Repaint visuals for new palette.
       drawCanvas();
       drawCharts();
       syncThemeToggle();
@@ -1038,7 +1013,6 @@
 
   syncThemeToggle();
 
-  // Footer year
   const yearEl = $('#year');
   if(yearEl){
     yearEl.textContent = new Date().getFullYear();
@@ -1047,11 +1021,6 @@
   // ===========================================================
   // RNG / DETERMINISM
   // ===========================================================
-  /**
-   * Seed global Math.random() using a simple LCG.
-   * NOTE: This overrides Math.random for the whole page.
-   * @param {number} s
-   */
   function setSeed(s){
     let seed = (s>>>0) || 1;
     Math.random = function(){
@@ -1060,13 +1029,11 @@
     };
   }
 
-  /** Read CSS variable from :root. */
   function cssVar(name){
     return getComputedStyle(document.documentElement)
       .getPropertyValue(name).trim();
   }
 
-  /** In-place Fisher–Yates shuffle. */
   function shuffle(arr){
     for(let i=arr.length-1;i>0;i--){
       const j=Math.floor(Math.random()*(i+1));
@@ -1078,13 +1045,12 @@
   // ===========================================================
   // MODEL & STATE
   // ===========================================================
-  /** Discrete health states. */
   const STATE = {
-    S:0, // Susceptible
-    E:1, // Exposed
-    I:2, // Infectious
-    R:3, // Recovered / Immune
-    D:4  // Dead
+    S:0,
+    E:1,
+    I:2,
+    R:3,
+    D:4
   };
 
   /**
@@ -1093,10 +1059,10 @@
    * @property {number} row
    * @property {number} state - one of STATE
    * @property {0|1} v - vaccinated flag
-   * @property {0|1} vEff - effective vaccination flag
+   * @property {0|1} vEff - effective vaccination flag (all-or-nothing protection)
+   * @property {0|1} everInf - has ever been infected via S→E (for CI/CFR)
    */
 
-  /** Centralized element references. */
   const els = {
     scenario:$('#scenario'),
     N:$('#N'), I0:$('#I0'), R0:$('#R0'), dt:$('#dt'),
@@ -1139,12 +1105,7 @@
     m_cfr: $('#m-cfr')
   };
 
-  /**
-   * Global simulation state.
-   * All core functions read from & mutate this object.
-   */
   const State = {
-    // Parameters
     N:5000,
     dt:1,
     beta:0.35,
@@ -1156,37 +1117,33 @@
     vaxRate:0,
     mutRate:0,
 
-    // Runtime
     t:0,
     running:false,
 
-    // Layout
-    /** @type {Person[]} */
     people:[],
     cols:0,
     rows:0,
 
-    // Time series
     series:{
       t:[], S:[], E:[], I:[], R:[], D:[],
       inc:[], prev:[], cumInc:[],
-      vAllPct:[], vEffPct:[]
+      vAllPct:[], vEffPct:[],
+      everInf:[]
     },
 
-    // Snapshots per step for scrubbing/branching
     snapshots:[],
 
-    // Current timeline view index (null = live)
     viewIndex:null,
 
-    // Auto-stop stability counter
-    stableCounter:0
+    stableCounter:0,
+
+    // Tracked unique ever-infected (via S→E), for CI/CFR/IR
+    everInfectedCount:0
   };
 
   // ===========================================================
   // AGGREGATES & R(t)
   // ===========================================================
-  /** Get snapshot for current viewIndex (if any). */
   function getViewSnapshot(){
     const idx = State.viewIndex;
     if (idx != null && State.snapshots[idx]) {
@@ -1195,10 +1152,6 @@
     return null;
   }
 
-  /**
-   * Compute S/E/I/R/D and vaccination aggregates for the current view
-   * (either live state or a stored snapshot).
-   */
   function computeAggregatesFromCurrentView(){
     const snap = getViewSnapshot();
     const src = snap || State.people;
@@ -1224,14 +1177,13 @@
     return {N,S,E,I,R,D,vEff,vIneff};
   }
 
-  /** Push aggregate data into sidebar UI. */
   function updateSidebarFromAggregates(agg){
     const { N, S, E, I, R, D, vEff, vIneff } = agg;
     const pct = x => 100 * x / Math.max(1, N);
 
     const pS=pct(S), pE=pct(E), pI=pct(I), pR=pct(R), pD=pct(D);
     const total=(pS+pE+pI+pR+pD) || 1;
-    const k=100/total; // normalize to 100% bar
+    const k=100/total;
 
     const hS=pS*k, hE=pE*k, hI=pI*k, hR=pR*k, hD=pD*k;
 
@@ -1282,7 +1234,6 @@
     };
   }
 
-  /** Sync coverage slider label to actual vaccinated share. */
   function syncVaxCovSliderToState(){
     if(!els.vaxCov) return;
     const { vAllPct } = computeVaxStats();
@@ -1293,19 +1244,17 @@
     }
   }
 
-    // ===========================================================
+  // ===========================================================
   // EPIDEMIOLOGIC METRICS TABLE
   // ===========================================================
   function updateMetrics(){
     const s = State.series;
     const len = s.t.length;
 
-    // Determine which index we are "viewing"
     const idx = (State.viewIndex != null)
       ? Math.min(State.viewIndex, Math.max(0, len - 1))
       : Math.max(0, len - 1);
 
-    // No data yet: clear & exit
     if(len === 0 || idx < 0){
       setMetricsDash();
       return;
@@ -1321,20 +1270,21 @@
     const N = State.N || (S + E + I + R + D) || 1;
     const atRisk0 = Math.max(1, N - (State.I0 || 0) - (State.R0init || 0));
 
-    // Approximate "ever infected" as anyone who is/was E, I, R, or D,
-    // minus those immune at baseline (R0init).
-    const everInfected = Math.max(0, (E + I + R + D) - (State.R0init || 0));
+    // Ever infected: tracked unique individuals with ≥1 S→E
+    const everInfected = (s.everInf && s.everInf[idx] != null)
+      ? s.everInf[idx]
+      : (State.everInfectedCount || 0);
 
     // Cumulative incidence (risk) over [0, t]
-    const cumIncRisk = everInfected / atRisk0;
+    const cumIncRisk = atRisk0 > 0 ? (everInfected / atRisk0) : NaN;
 
-    // Incidence risk: same quantity (explicit label)
+    // Incidence risk: same quantity
     const incRisk = cumIncRisk;
 
-    // Risk rate: cumulative incidence per unit time
-    const riskRate = (t > 0) ? (cumIncRisk / t) : NaN;
+    // Average risk per day (non-standard label, for teaching)
+    const riskRate = (t > 0 && atRisk0 > 0) ? (cumIncRisk / t) : NaN;
 
-    // Person-time at risk: sum S_j * Δt  (toy approx)
+    // Person-time at risk (toy: sum S_j * Δt)
     let ptAtRisk = 0;
     for(let j = 0; j <= idx; j++){
       const Sj = s.S[j] ?? S;
@@ -1349,10 +1299,9 @@
     const alive = Math.max(1, N - D);
     const prevPoint = I / alive;
 
-    // Simple case fatality risk (toy)
+    // Case fatality risk (toy): deaths among ever infected
     const cfr = everInfected > 0 ? (D / everInfected) : NaN;
 
-    // Formatting helpers
     const fmtPct = x =>
       (!isFinite(x) ? '–' : (x * 100).toFixed(1) + '%');
 
@@ -1365,7 +1314,6 @@
     const fmtTime = x =>
       (!isFinite(x) ? '–' : x.toFixed(1) + ' d');
 
-    // Push to DOM
     if(els.m_t)          els.m_t.textContent          = fmtTime(t);
     if(els.m_N)          els.m_N.textContent          = fmtCount(N);
     if(els.m_alive)      els.m_alive.textContent      = fmtCount(alive);
@@ -1392,16 +1340,14 @@
     });
   }
 
-
   // ===========================================================
-  // R0 / Rt
+  // R0 / Rt (approximate, SIR-style)
   // ===========================================================
   function computeR0(){
     const beta=+els.beta.value, gamma=+els.gamma.value;
     return gamma>0? (beta/gamma):Infinity;
   }
 
-  /** Update R0 and Rt displays based on current parameters + view. */
   function updateRDisplaysLive(){
     if(!els.R0disp || !els.RtDisp) return;
 
@@ -1460,7 +1406,6 @@
     els.toggle.setAttribute('aria-pressed','false');
   }
 
-  /** Map "days infectious" slider → gamma (=1/days). */
   function applyDaysInfToGamma(){
     if(!els.daysInf || !els.gamma) return;
     const days = +els.daysInf.value || 10;
@@ -1468,30 +1413,37 @@
     els.gamma.value = g.toFixed(2);
   }
 
+  
+
   // ===========================================================
   // CHART CANVAS SIZING
   // ===========================================================
+
+  
   function prepareChartCanvas(c){
-    if(!c || !c.parentElement) return;
-    const parent = c.parentElement;
-    const dpr = window.devicePixelRatio || 1;
+  if(!c || !c.parentElement) return;
+  const parent = c.parentElement;
+  const dpr = window.devicePixelRatio || 1;
 
-    let width = parent.clientWidth;
-    if(width <= 0) width = 400;
+  // Use a bit less than full width so it stays inside the box visually
+  let width = parent.clientWidth * 0.94;
+  if(width <= 0) width = 400;
 
-    let height = Math.max(140, Math.round(width * 0.42));
+  // Slightly lower height ratio too
+  let height = Math.max(130, Math.round(width * 0.35));
 
-    const displayWidth = Math.floor(width * dpr);
-    const displayHeight = Math.floor(height * dpr);
+  const displayWidth = Math.floor(width * dpr);
+  const displayHeight = Math.floor(height * dpr);
 
-    if(c.width !== displayWidth || c.height !== displayHeight){
-      c.width = displayWidth;
-      c.height = displayHeight;
-    }
-
-    c.style.width = width + "px";
-    c.style.height = height + "px";
+  if(c.width !== displayWidth || c.height !== displayHeight){
+    c.width = displayWidth;
+    c.height = displayHeight;
   }
+
+  c.style.width = width + "px";
+  c.style.height = height + "px";
+}
+
 
   function updateChartLayouts(){
     prepareChartCanvas(els.incVaxChart);
@@ -1501,10 +1453,6 @@
   // ===========================================================
   // INITIALIZATION & RESET
   // ===========================================================
-  /**
-   * Build population, apply initial conditions,
-   * clear time series, redraw everything.
-   */
   function initPeople(){
     applyDaysInfToGamma();
     syncSliders();
@@ -1513,59 +1461,60 @@
     const I0 = clamp(+els.I0.value || 5, 0, N);
     const R0init = clamp(+els.R0.value || 0, 0, N - I0);
 
-    // Grid size (simple rectangular layout; hex mode uses same coords)
     const cols = Math.ceil(Math.sqrt(N)*1.3);
     const rows = Math.ceil(N / cols);
 
     State.cols = cols;
     State.rows = rows;
 
-    // Initialize all as susceptible
     State.people = new Array(N).fill(0).map((_,i)=>({
       col:i%cols,
       row:Math.floor(i/cols),
       state:STATE.S,
       v:0,
-      vEff:0
+      vEff:0,
+      everInf:0
     }));
 
-    // Assign initial immune (R) and infected (I) w/out overlapping
     const idxs = shuffle([...Array(N).keys()]);
 
+    // Initial immune
     for(let i=0;i<R0init && i<idxs.length;i++){
       State.people[idxs[i]].state = STATE.R;
     }
 
+    // Initial infected (prevalent at t=0, excluded from incident CI)
     let used = R0init;
     let assignedI = 0;
     while(assignedI < I0 && used < idxs.length){
       const p = State.people[idxs[used]];
       if(p.state === STATE.S){
         p.state = STATE.I;
+        // p.everInf remains 0: not counted as incident infection
         assignedI++;
       }
       used++;
     }
 
-    // Reset series and metadata
     State.N = N;
     State.I0 = I0;
     State.R0init = R0init;
     State.t = 0;
+
     State.series = {
       t:[], S:[], E:[], I:[], R:[], D:[],
       inc:[], prev:[], cumInc:[],
-      vAllPct:[], vEffPct:[]
+      vAllPct:[], vEffPct:[],
+      everInf:[]
     };
     State.snapshots = [];
     State.viewIndex = null;
     State.stableCounter = 0;
+    State.everInfectedCount = 0;
 
-    // Initial vaccination distribution per controls
     assignVaccinationInitial();
     syncVaxCovSliderToState();
 
-    // UI reset
     resetToggleToStopped();
     els.timeDisp.textContent='0';
     els.viewLabel.textContent='Live';
@@ -1577,7 +1526,6 @@
     updateMetrics();
   }
 
-  /** Assign vaccination flags to match coverage & efficacy. */
   function assignVaccinationInitial(){
     const cov = (+els.vaxCov.value||0)/100;
     const ve = (+els.ve.value||0)/100;
@@ -1594,16 +1542,10 @@
     }
   }
 
-  /**
-   * Branch timeline from current or selected snapshot.
-   * Used when sliders change after some simulation history.
-   * @param {{reassignVaccination:boolean}} options
-   */
   function branchFromCurrent({reassignVaccination}){
     const len = State.series.t.length;
     const haveHistory = len>0 && State.snapshots.length>=len;
 
-    // If no usable history, just (optionally) recompute vax and redraw.
     if(!haveHistory){
       if(reassignVaccination){
         assignVaccinationInitial();
@@ -1617,7 +1559,6 @@
       return;
     }
 
-    // Choose branch index: either viewed snapshot or last point
     const idx = (State.viewIndex!=null)
       ? clamp(State.viewIndex, 0, len-1)
       : (len-1);
@@ -1625,16 +1566,15 @@
     const snap = State.snapshots[idx];
     if(!snap) return;
 
-    // Restore snapshot states
     State.people.forEach((p,i)=>{
       const s = snap[i];
       if(!s) return;
       p.state = s.state;
       p.v = s.v;
       p.vEff = s.vEff;
+      p.everInf = s.everInf || 0;
     });
 
-    // Optionally reassign vaccination under new controls at branch point
     if(reassignVaccination){
       const cov = (+els.vaxCov.value||0)/100;
       const ve = (+els.ve.value||0)/100;
@@ -1650,7 +1590,6 @@
       }
     }
 
-    // Truncate all time series & snapshots at branch index
     Object.keys(State.series).forEach(key=>{
       State.series[key] = State.series[key].slice(0, idx+1);
     });
@@ -1659,6 +1598,10 @@
     State.t = State.series.t[idx] || 0;
     State.viewIndex = null;
     State.stableCounter = 0;
+    State.everInfectedCount =
+      (State.series.everInf && State.series.everInf[idx] != null)
+        ? State.series.everInf[idx]
+        : 0;
 
     syncVaxCovSliderToState();
     els.viewLabel.textContent = `t=${State.t.toFixed(0)} days`;
@@ -1673,11 +1616,6 @@
   // ===========================================================
   // NEIGHBORHOOD LOGIC
   // ===========================================================
-  /**
-   * Count infectious neighbors for person `p` given:
-   * - `infSet`: Set of "col,row" for infectious individuals
-   * - `contact`: "4" (von Neumann) or "6" (offset hex-like)
-   */
   function infectiousNeighborCount(p, infSet, contact){
     const col = p.col;
     const row = p.row;
@@ -1694,7 +1632,6 @@
       return k;
     }
 
-    // Hex approximation via row offset
     const isOdd = (row % 2) === 1;
     let coords;
     if(!isOdd){
@@ -1720,12 +1657,6 @@
   // ===========================================================
   // SIMULATION STEP
   // ===========================================================
-  /**
-   * Advance the system by one dt.
-   * - Applies infection, progression, recovery, death
-   * - Applies mutation (immune loss) and vaccination flow
-   * - Updates time series & snapshots
-   */
   function step(){
     const beta    = +els.beta.value;
     const gamma   = +els.gamma.value;
@@ -1740,7 +1671,6 @@
 
     if(!N) return;
 
-    // Snapshot states & build set of infectious positions
     const curStates = State.people.map(p=>p.state);
     const infSet = new Set();
     State.people.forEach((p,i)=>{
@@ -1750,36 +1680,45 @@
     });
 
     const newStates = curStates.slice();
-    let newI = 0; // new infectious (incidence) this step
+    let newI = 0;              // new I (for display incidence)
+    let newIncidents = 0;      // new unique S→E infections (for CI/CFR)
 
     for(let i=0;i<N;i++){
       const p = State.people[i];
       const s = curStates[i];
 
       if(s===STATE.S){
-        // Susceptible → Exposed
-        if(p.v && p.vEff) continue; // effectively vaccinated blocks infection
+        if(p.v && p.vEff) continue; // effectively vaccinated: no infection
         const kInf = infectiousNeighborCount(p, infSet, contact);
         if(kInf>0){
           const prob = 1 - Math.exp(-beta * kInf * dt);
           if(els.stoch.value==="1"){
-            if(Math.random() < prob) newStates[i] = STATE.E;
+            if(Math.random() < prob){
+              newStates[i] = STATE.E;
+              if(p.everInf === 0){
+                p.everInf = 1;
+                newIncidents++;
+              }
+            }
           }else{
-            // In deterministic mode, treat sufficiently large probability as exposure
-            if(prob > 0.01) newStates[i] = STATE.E;
+            if(prob > 0.01){
+              newStates[i] = STATE.E;
+              if(p.everInf === 0){
+                p.everInf = 1;
+                newIncidents++;
+              }
+            }
           }
         }
       }
       else if(s===STATE.E){
-        // Exposed → Infectious
-        // Simple hazard: 0.5/day (tunable if needed)
+        // Latent period: fixed hazard ~0.5/day (toy)
         if(Math.random() < 0.5*dt){
           newStates[i] = STATE.I;
           newI++;
         }
       }
       else if(s===STATE.I){
-        // Infectious → Recovered or Dead
         const pr = 1 - Math.exp(-gamma*dt);
         const pm = 1 - Math.exp(-mu*dt);
         const u  = Math.random();
@@ -1791,7 +1730,10 @@
       }
     }
 
-    // Mutation: immunity/effective vax may wane -> back to susceptible
+    // Update ever-infected count (unique individuals)
+    State.everInfectedCount += newIncidents;
+
+    // Mutation / waning: immune or effectively vaccinated may return to S
     if(mutRate > 0){
       const pMut = 1 - Math.exp(-mutRate * dt);
       for(let i=0;i<N;i++){
@@ -1804,6 +1746,7 @@
             newStates[i] = STATE.S;
             person.v = 0;
             person.vEff = 0;
+            // person.everInf is NOT reset: they remain "ever infected"
           }
         }
       }
@@ -1814,7 +1757,7 @@
       State.people[i].state = newStates[i];
     }
 
-    // Daily vaccination increment: vaxRate is %-points/day
+    // Daily vaccination increment (toy flow)
     if(vaxRate > 0){
       const stepPoints = vaxRate * dt;
       let targetNew = Math.round((stepPoints/100) * N);
@@ -1828,7 +1771,6 @@
         }
         if(targetNew > candidates.length) targetNew = candidates.length;
 
-        // Shuffle candidates and vaccinate first k
         for(let i=candidates.length-1;i>0;i--){
           const j = Math.floor(Math.random()*(i+1));
           [candidates[i],candidates[j]] = [candidates[j],candidates[i]];
@@ -1865,6 +1807,11 @@
     const vAllPct = 100 * vAll / Math.max(1,N);
     const vEffPct = 100 * vEff / Math.max(1,N);
 
+    const atRisk0 = Math.max(1, State.N - State.I0 - State.R0init);
+    const cumInc = atRisk0 > 0
+      ? (State.everInfectedCount / atRisk0)
+      : 0;
+
     State.series.t.push(tNext);
     State.series.S.push(S);
     State.series.E.push(E);
@@ -1873,17 +1820,21 @@
     State.series.D.push(D);
     State.series.inc.push(Math.max(0,newI));
     State.series.prev.push(I/Math.max(1,N));
-    const cumInc = (N - (State.series.S[0] ?? N) - S)/Math.max(1,N);
     State.series.cumInc.push(cumInc);
     State.series.vAllPct.push(vAllPct);
     State.series.vEffPct.push(vEffPct);
+    State.series.everInf.push(State.everInfectedCount);
 
-    // Save minimal snapshot for timeline scrubbing
+    // Snapshot for scrubbing
     State.snapshots.push(
-      State.people.map(p => ({state:p.state, v:p.v, vEff:p.vEff}))
+      State.people.map(p => ({
+        state:p.state,
+        v:p.v,
+        vEff:p.vEff,
+        everInf:p.everInf
+      }))
     );
 
-    // UI updates
     syncVaxCovSliderToState();
     updateHeaderStats(tNext);
     refreshScrubber();
@@ -1892,7 +1843,6 @@
     drawCharts();
     updateMetrics();
 
-    // Auto-stop: once stable (no E or I) for several steps
     const stableNow = (I === 0 && E === 0);
     State.stableCounter = stableNow ? State.stableCounter + 1 : 0;
 
@@ -1906,7 +1856,6 @@
     }
   }
 
-  /** Update headline time and R(t) readout. */
   function updateHeaderStats(t){
     els.timeDisp.textContent = t.toFixed(0);
     const timerEl = $('#simTimer');
@@ -1920,7 +1869,6 @@
   // ===========================================================
   // TIMELINE & DRAWING
   // ===========================================================
-  /** Render population grid on main canvas. */
   function drawCanvas(){
     const c=els.simCanvas;
     const ctx=c.getContext('2d');
@@ -1943,15 +1891,15 @@
       : null;
 
     if(contact === '4'){
-      // Simple grid (square neighbors)
       const cell = Math.min(W/cols, H/rows);
       const offsetX = (W - cols*cell)/2;
       const offsetY = (H - rows*cell)/2;
 
       State.people.forEach((p,i)=>{
-        const state = snapshot ? snapshot[i].state : p.state;
-        const v     = snapshot ? snapshot[i].v     : p.v;
-        const vEff  = snapshot ? snapshot[i].vEff  : p.vEff;
+        const sObj = snapshot ? snapshot[i] : p;
+        const state = sObj.state;
+        const v     = sObj.v;
+        const vEff  = sObj.vEff;
 
         const x = offsetX + (p.col + 0.5)*cell;
         const y = offsetY + (p.row + 0.5)*cell;
@@ -1974,7 +1922,6 @@
         }
       });
     } else {
-      // Hex-ish layout using offset rows
       const colsHex = cols;
       const rowsHex = rows;
       const baseWUnits = 2 + 1.5*(colsHex - 1) + 0.75;
@@ -1989,9 +1936,10 @@
       const offsetY = (H - totalH)/2;
 
       State.people.forEach((p,i)=>{
-        const state = snapshot ? snapshot[i].state : p.state;
-        const v     = snapshot ? snapshot[i].v     : p.v;
-        const vEff  = snapshot ? snapshot[i].vEff  : p.vEff;
+        const sObj = snapshot ? snapshot[i] : p;
+        const state = sObj.state;
+        const v     = sObj.v;
+        const vEff  = sObj.vEff;
 
         const row = p.row;
         const col = p.col;
@@ -2019,7 +1967,6 @@
     }
   }
 
-  /** Map state → color via CSS vars. */
   function getColor(state){
     if(state===STATE.S) return cssVar('--c-sus');
     if(state===STATE.E) return cssVar('--c-exp');
@@ -2028,7 +1975,6 @@
     return cssVar('--c-dead');
   }
 
-  /** Update scrubber range/labels. */
   function refreshScrubber(){
     const len = State.series.t.length;
     const maxIndex = Math.max(0, len-1);
@@ -2049,15 +1995,8 @@
     if(els.scrubVal) els.scrubVal.textContent = currentT.toFixed(0);
   }
 
-  /** Animation loop: only advances when State.running is true. */
-  function loop(){
-    if(!State.running) return;
-    step();
-    requestAnimationFrame(loop);
-  }
-
   // ===========================================================
-  // CHARTS (Canvas-based)
+  // CHARTS
   // ===========================================================
   function drawCharts(){
     updateChartLayouts();
@@ -2065,7 +2004,6 @@
     drawSIRChart();
   }
 
-  /** Incidence + prevalence + vaccination chart. */
   function drawIncVaxChart(){
     const c = els.incVaxChart;
     if(!c) return;
@@ -2090,7 +2028,6 @@
     const plotW = W - padL - padR;
     const plotH = H - padT - padB;
 
-    // Axis labels
     ctx.fillStyle = cssVar('--muted');
     ctx.font = "10px system-ui";
     ctx.textAlign = "center";
@@ -2107,11 +2044,10 @@
     ctx.translate(W - 10, padT + plotH/2);
     ctx.rotate(-Math.PI/2);
     ctx.textAlign = "center";
-    ctx.fillText("% Vaccinated", 0, 0);
+    ctx.fillText("% Vaccinated (toy)", 0, 0);
     ctx.restore();
 
     if(len === 0 || upto < 0 || plotW <= 0 || plotH <= 0){
-      // Empty axes placeholder
       ctx.strokeStyle = "rgba(255,255,255,0.18)";
       ctx.beginPath();
       ctx.moveTo(padL, padT);
@@ -2170,7 +2106,6 @@
       ctx.fillText(v.toFixed(0), padL - 4, y + 3);
     }
 
-    // Right axis (percent vaccinated)
     ctx.textAlign = "left";
     for(let i=0;i<=yTicks;i++){
       const frac = i/yTicks;
@@ -2179,7 +2114,6 @@
       ctx.fillText(pct.toFixed(0), W - padR + 4, y + 3);
     }
 
-    // Axes
     ctx.strokeStyle = "rgba(255,255,255,0.18)";
     ctx.beginPath();
     ctx.moveTo(padL, padT);
@@ -2187,7 +2121,7 @@
     ctx.lineTo(W - padR, H - padB);
     ctx.stroke();
 
-    // Incidence line
+    // Incidence
     ctx.strokeStyle = cssVar('--c-exp');
     ctx.lineWidth = 1.4;
     ctx.beginPath();
@@ -2198,7 +2132,7 @@
     }
     ctx.stroke();
 
-    // Prevalence line (using I counts)
+    // Prevalence (I)
     ctx.strokeStyle = cssVar('--accent2');
     ctx.lineWidth = 1.2;
     ctx.beginPath();
@@ -2209,7 +2143,7 @@
     }
     ctx.stroke();
 
-    // Vaccination coverage (%)
+    // Vaccination coverage
     if(s.vAllPct && s.vAllPct.length){
       ctx.strokeStyle = cssVar('--accent');
       ctx.lineWidth = 1.2;
@@ -2223,7 +2157,6 @@
     }
   }
 
-  /** SEIRD compartments chart. */
   function drawSIRChart(){
     const c = els.sirChart;
     if(!c) return;
@@ -2245,7 +2178,6 @@
     const plotW = W - padL - padR;
     const plotH = H - padT - padB;
 
-    // Axis labels
     ctx.fillStyle = cssVar('--muted');
     ctx.font = "10px system-ui";
     ctx.textAlign = "center";
@@ -2277,7 +2209,6 @@
     const yForVal = v =>
       (H - padB) - (v / Math.max(1,N)) * plotH;
 
-    // Grid + ticks
     ctx.strokeStyle = "rgba(255,255,255,0.06)";
     ctx.fillStyle = cssVar('--muted');
     ctx.font = "10px system-ui";
@@ -2308,7 +2239,6 @@
       ctx.fillText(v.toFixed(0), padL - 4, y + 3);
     }
 
-    // Axes
     ctx.strokeStyle = "rgba(255,255,255,0.18)";
     ctx.beginPath();
     ctx.moveTo(padL, padT);
@@ -2316,7 +2246,6 @@
     ctx.lineTo(W - padR, H - padB);
     ctx.stroke();
 
-    // Helper to draw one compartment
     function plot(arr, colorVar){
       if(!arr || !arr.length) return;
       ctx.strokeStyle = cssVar(colorVar);
@@ -2343,10 +2272,6 @@
   // ===========================================================
   els.scenario.addEventListener('change', e=> applyScenario(e.target.value));
 
-  /**
-   * Apply preset scenario values and reinitialize the model.
-   * Presets are illustrative; not calibrated epidemiology.
-   */
   function applyScenario(name){
     const presets = {
       rare: {
@@ -2371,7 +2296,6 @@
         mu: 0.01
       },
       flu: {
-        // Flu-like
         N: 5000,
         I0: 3,
         beta: 0.32,
@@ -2379,14 +2303,12 @@
         mu: 0.004
       },
       covid: {
-        // Early-pandemic style toy params
         N: 5000,
         I0: 5,
         beta: 0.45,
         gamma: 0.08,
         mu: 0.006
       },
-      // Disease-flavored presets
       measles: {
         N: 5000,
         I0: 3,
@@ -2436,13 +2358,11 @@
       if (p.gamma  != null) els.gamma.value  = p.gamma;
       if (p.mu     != null) els.mu.value     = p.mu;
 
-      // Keep "days infectious" slider consistent if gamma is set.
       if (p.gamma != null && els.daysInf) {
         const days = p.gamma > 0 ? (1 / p.gamma) : 10;
         els.daysInf.value = days.toFixed(1);
       }
 
-      // Optional vaccination assumptions
       if (p.vaxCov != null && els.vaxCov) {
         els.vaxCov.value = p.vaxCov;
       }
@@ -2455,7 +2375,6 @@
     initPeople();
   }
 
-  // Core inputs that trigger a full reset when changed.
   [
     els.N, els.I0, els.R0, els.dt,
     els.stoch, els.seed,
@@ -2471,7 +2390,6 @@
     });
   });
 
-  // Live update on N slider movement.
   if(els.N){
     els.N.addEventListener('input', ()=>{
       if(els.NVal){
@@ -2481,7 +2399,6 @@
     });
   }
 
-  // Parameter sliders that should branch from history without full re-init.
   ['beta','gamma','mu'].forEach(id=>{
     const el = els[id];
     if(!el) return;
@@ -2491,7 +2408,6 @@
     });
   });
 
-  // Vaccination coverage/efficacy -> may reassign vaccination distribution.
   ['ve','vaxCov'].forEach(id=>{
     const el = els[id];
     if(!el) return;
@@ -2501,7 +2417,6 @@
     });
   });
 
-  // Vaccination rate & mutation rate -> change dynamics going forward.
   ['vaxRate','mutRate'].forEach(id=>{
     const el = els[id];
     if(!el) return;
@@ -2511,12 +2426,10 @@
     });
   });
 
-  // Play / Pause button
   els.toggle.addEventListener('click', ()=>{
     if(State.running){
       resetToggleToStopped();
     }else{
-      // If user is inspecting history, branch before resuming.
       if(State.viewIndex != null){
         branchFromCurrent({reassignVaccination:false});
       }
@@ -2525,13 +2438,13 @@
     }
   });
 
-  // Reset button
   els.reset.addEventListener('click', ()=>{
     setSeed(+els.seed.value || 42);
+    els.vaxCov.value = 0;
+    syncSliders();
     initPeople();
   });
 
-  // Timeline scrubber
   els.scrubber.addEventListener('input', ()=>{
     const vIndex = parseInt(els.scrubber.value,10)||0;
     State.viewIndex = vIndex;
@@ -2555,7 +2468,6 @@
     updateMetrics();
   });
 
-  // Jump back to live state
   els.liveBtn.addEventListener('click', ()=>{
     State.viewIndex = null;
     refreshScrubber();
@@ -2567,15 +2479,18 @@
     updateMetrics();
   });
 
-  // Export time series as CSV
   els.exportCSV.addEventListener('click', ()=>{
-    const rows=[["t","S","E","I","R","D","inc","prev","cumInc"]];
+    const rows=[["t","S","E","I","R","D","everInf"]];
     const s=State.series;
     for(let i=0;i<s.t.length;i++){
       rows.push([
-        s.t[i],s.S[i],s.E[i],s.I[i],
-        s.R[i],s.D[i],s.inc[i],
-        s.prev[i],s.cumInc[i]
+        s.t[i],
+        s.S[i],
+        s.E[i],
+        s.I[i],
+        s.R[i],
+        s.D[i],
+        (s.everInf && s.everInf[i] != null) ? s.everInf[i] : ""
       ]);
     }
     const csv = rows.map(r=>r.join(',')).join('\n');
@@ -2586,7 +2501,12 @@
     a.click();
   });
 
-  // Redraw charts on resize (no heavy debouncing needed here)
+  function loop(){
+    if(!State.running) return;
+    step();
+    requestAnimationFrame(loop);
+  }
+
   window.addEventListener('resize', drawCharts);
 
   // ===========================================================
