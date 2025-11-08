@@ -97,6 +97,54 @@
       --pill-bg:#f3f4f6;
     }
 
+        /* Semantic text colors mapped to existing palette */
+    .color-sus   { color: var(--c-sus); }
+    .color-exp   { color: var(--c-exp); }
+    .color-inf   { color: var(--c-inf); }
+    .color-imm   { color: var(--c-imm); }
+    .color-dead  { color: var(--c-dead); }
+
+    .color-vax   { color: var(--accent); }
+    .color-inc   { color: var(--c-exp); }     /* incidence line */
+    .color-prev  { color: var(--accent2); }   /* prevalence line */
+
+    /* Small color swatch used in labels so they visually match charts/legend */
+    .swatch {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 3px;
+      margin-right: 4px;
+      vertical-align: middle;
+    }
+    .swatch-inc  { background: var(--c-exp); }
+    .swatch-prev { background: var(--accent2); }
+    .swatch-vax  { background: var(--accent); }
+    .swatch-inf  { background: var(--c-inf); }
+    .swatch-dead { background: var(--c-dead); }
+
+    /* Light structural hint so rows feel grouped with their measure */
+    .metricRow-inc th,
+    .metricRow-inc td.val {
+      color: var(--c-exp);
+    }
+    .metricRow-prev th,
+    .metricRow-prev td.val {
+      color: var(--accent2);
+    }
+    .metricRow-vax th,
+    .metricRow-vax td.val {
+      color: var(--accent);
+    }
+
+    /* Make formulas readable but slightly softer */
+    .metricsTable td.formula {
+      color: var(--muted);
+      opacity: 0.9;
+    }
+
+
+
     /* ======================= BASE LAYOUT ========================= */
     * { box-sizing:border-box; }
 
@@ -203,6 +251,7 @@
       color:var(--muted);
       margin:2px 0 6px;
     }
+
 
     input[type="number"],
     select {
@@ -411,13 +460,13 @@
     }
 
     .chartTitle {
-      font-size:11px;
+      font-size:16px;
       color:var(--muted);
       margin:0 0 2px;
     }
 
     .chartExplain {
-      font-size:9px;
+      font-size:12px;
       color:var(--muted);
       margin:0 0 4px;
       line-height:1.4;
@@ -429,6 +478,101 @@
       display:block;
       border-radius:8px;
     }
+
+    .metricsPanel {
+      margin-top: 12px;
+    }
+
+    .metricsTitle {
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 2px;
+    }
+
+    .metricsSub {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .metricsGrid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 8px;
+    }
+
+    .metricsBlock {
+      background: var(--canvas-bg);
+      border-radius: 10px;
+      border: 1px solid var(--border-soft);
+      padding: 6px;
+    }
+
+    .metricsBlockTitle {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--muted);
+      margin-bottom: 2px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .metricsTable {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .metricsTable th,
+    .metricsTable td {
+      padding: 2px 2px;
+      vertical-align: top;
+    }
+
+    .metricsTable th {
+      text-align: left;
+      font-weight: 500;
+      color: var(--muted);
+      width: 40%;
+    }
+
+    .metricsTable td.val {
+      text-align: right;
+      font-weight: 600;
+      width: 22%;
+      white-space: nowrap;
+    }
+
+    .metricsTable td.formula {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .tag {
+      display: inline-flex;
+      padding: 1px 6px;
+      border-radius: 999px;
+      font-size: 8px;
+      border: 1px solid var(--border-soft);
+      color: var(--muted);
+      gap: 4px;
+      align-items: center;
+    }
+
+    .tag-inc {
+      color: var(--c-exp);
+      border-color: var(--c-exp);
+    }
+
+    .tag-prev {
+      color: var(--accent2);
+      border-color: var(--accent2);
+    }
+
 
     @media (max-width:900px){
       .sim { grid-template-columns:1fr; }
@@ -694,6 +838,144 @@
       </div>
     </div>
 
+        <!-- ===================== Epidemiologic Metrics ===================== -->
+    <div class="panel pad metricsPanel">
+      <div class="metricsTitle">Epidemiologic Summary at Viewed Time</div>
+      <div class="metricsSub">
+        Values update with the timeline scrubber or Live view.
+      </div>
+
+      <div class="metricsGrid">
+        <!-- Block 1: Time & population -->
+        <div class="metricsBlock">
+          <div class="metricsBlockTitle">Context</div>
+          <table class="metricsTable">
+            <tbody>
+              <tr>
+                <th>Time (t)</th>
+                <td id="m-t" class="val"></td>
+                <td class="formula">Days since start</td>
+              </tr>
+              <tr>
+                <th>Total population (N)</th>
+                <td id="m-N" class="val"></td>
+                <td class="formula">Initial individuals</td>
+              </tr>
+              <tr>
+                <th>Alive at t</th>
+                <td id="m-alive" class="val"></td>
+                <td class="formula">N − deaths(t)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Block 2: Incidence-style measures -->
+<div class="metricsBlock">
+  <div class="metricsBlockTitle">
+    <span class="tag tag-inc">
+      Incidence &amp; Risk
+    </span>
+  </div>
+  <table class="metricsTable">
+    <tbody>
+      <tr class="metricRow-inc">
+        <th>
+          Cumulative incidence (risk)
+        </th>
+        <td id="m-cumInc" class="val"></td>
+        <td class="formula">
+          <span class="color-inc">New infections(0→t)</span>
+          /
+          <span class="color-sus">at-risk at start</span>
+        </td>
+      </tr>
+
+      <tr class="metricRow-inc">
+        <th>Incidence risk</th>
+        <td id="m-incRisk" class="val"></td>
+        <td class="formula">
+          Same as cumulative incidence over [0, t]
+        </td>
+      </tr>
+
+      <tr class="metricRow-inc">
+        <th>Risk rate</th>
+        <td id="m-riskRate" class="val"></td>
+        <td class="formula">
+          <span class="color-inc">Cumulative incidence</span>
+          / time interval
+        </td>
+      </tr>
+
+      <tr class="metricRow-inc">
+        <th>Incidence rate</th>
+        <td id="m-incRate" class="val"></td>
+        <td class="formula">
+          <span class="color-inc">New infections(0→t)</span>
+          /
+          <span class="color-sus">person-time at risk</span>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- Block 3: Prevalence -->
+<div class="metricsBlock">
+  <div class="metricsBlockTitle">
+    <span class="tag tag-prev">
+      Prevalence
+    </span>
+  </div>
+  <table class="metricsTable">
+    <tbody>
+      <tr class="metricRow-prev">
+        <th>
+          Point prevalence (infectious)
+        </th>
+        <td id="m-prevPoint" class="val"></td>
+        <td class="formula">
+          <span class="color-inf">Infectious(t)</span>
+          /
+          <span>alive(t)</span>
+        </td>
+      </tr>
+
+      <tr>
+        <th>
+          Cumulative infected (count)
+        </th>
+        <td id="m-everInf" class="val color-inc"></td>
+        <td class="formula">
+          Ever in <span class="color-exp">E</span>,
+          <span class="color-inf">I</span>,
+          <span class="color-imm">R</span>, or
+          <span class="color-dead">D</span>
+        </td>
+      </tr>
+
+      <tr class="metricRow-severe">
+        <th>
+          Case fatality risk (toy)
+        </th>
+        <td id="m-cfr" class="val color-dead"></td>
+        <td class="formula">
+          <span class="color-dead">Deaths(t)</span>
+          /
+          <span class="color-inc">ever infected(0→t)</span>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+
+
+      </div>
+    </div>
+
+
     <!-- ===================== Export ===================== -->
     <div class="panel pad" style="margin-top:12px">
       <button class="btn ghost" id="exportCSV">Export Time Series (CSV)</button>
@@ -844,7 +1126,17 @@
     scrubMax:$('#scrubMax'),
     NVal:$('#NVal'),
     incVaxChart:$('#incVaxChart'),
-    sirChart:$('#sirChart')
+    sirChart:$('#sirChart'),
+    m_t: $('#m-t'),
+    m_N: $('#m-N'),
+    m_alive: $('#m-alive'),
+    m_cumInc: $('#m-cumInc'),
+    m_incRisk: $('#m-incRisk'),
+    m_riskRate: $('#m-riskRate'),
+    m_incRate: $('#m-incRate'),
+    m_prevPoint: $('#m-prevPoint'),
+    m_everInf: $('#m-everInf'),
+    m_cfr: $('#m-cfr')
   };
 
   /**
@@ -1001,6 +1293,106 @@
     }
   }
 
+    // ===========================================================
+  // EPIDEMIOLOGIC METRICS TABLE
+  // ===========================================================
+  function updateMetrics(){
+    const s = State.series;
+    const len = s.t.length;
+
+    // Determine which index we are "viewing"
+    const idx = (State.viewIndex != null)
+      ? Math.min(State.viewIndex, Math.max(0, len - 1))
+      : Math.max(0, len - 1);
+
+    // No data yet: clear & exit
+    if(len === 0 || idx < 0){
+      setMetricsDash();
+      return;
+    }
+
+    const t = s.t[idx];
+    const S = s.S[idx];
+    const E = s.E[idx];
+    const I = s.I[idx];
+    const R = s.R[idx];
+    const D = s.D[idx];
+
+    const N = State.N || (S + E + I + R + D) || 1;
+    const atRisk0 = Math.max(1, N - (State.I0 || 0) - (State.R0init || 0));
+
+    // Approximate "ever infected" as anyone who is/was E, I, R, or D,
+    // minus those immune at baseline (R0init).
+    const everInfected = Math.max(0, (E + I + R + D) - (State.R0init || 0));
+
+    // Cumulative incidence (risk) over [0, t]
+    const cumIncRisk = everInfected / atRisk0;
+
+    // Incidence risk: same quantity (explicit label)
+    const incRisk = cumIncRisk;
+
+    // Risk rate: cumulative incidence per unit time
+    const riskRate = (t > 0) ? (cumIncRisk / t) : NaN;
+
+    // Person-time at risk: sum S_j * Δt  (toy approx)
+    let ptAtRisk = 0;
+    for(let j = 0; j <= idx; j++){
+      const Sj = s.S[j] ?? S;
+      const dt = (j === 0)
+        ? (s.t[0] || State.dt || 1)
+        : ((s.t[j] - s.t[j-1]) || State.dt || 1);
+      ptAtRisk += Sj * dt;
+    }
+    const incRate = ptAtRisk > 0 ? (everInfected / ptAtRisk) : NaN;
+
+    // Point prevalence of infectious at time t (among alive)
+    const alive = Math.max(1, N - D);
+    const prevPoint = I / alive;
+
+    // Simple case fatality risk (toy)
+    const cfr = everInfected > 0 ? (D / everInfected) : NaN;
+
+    // Formatting helpers
+    const fmtPct = x =>
+      (!isFinite(x) ? '–' : (x * 100).toFixed(1) + '%');
+
+    const fmtRate = (x, unit) =>
+      (!isFinite(x) ? '–' : x.toFixed(4) + ' ' + unit);
+
+    const fmtCount = x =>
+      (!isFinite(x) ? '–' : Math.round(x).toString());
+
+    const fmtTime = x =>
+      (!isFinite(x) ? '–' : x.toFixed(1) + ' d');
+
+    // Push to DOM
+    if(els.m_t)          els.m_t.textContent          = fmtTime(t);
+    if(els.m_N)          els.m_N.textContent          = fmtCount(N);
+    if(els.m_alive)      els.m_alive.textContent      = fmtCount(alive);
+
+    if(els.m_cumInc)     els.m_cumInc.textContent     = fmtPct(cumIncRisk);
+    if(els.m_incRisk)    els.m_incRisk.textContent    = fmtPct(incRisk);
+    if(els.m_riskRate)   els.m_riskRate.textContent   = fmtRate(riskRate, '/day');
+    if(els.m_incRate)    els.m_incRate.textContent    = fmtRate(incRate, 'per person-day');
+
+    if(els.m_prevPoint)  els.m_prevPoint.textContent  = fmtPct(prevPoint);
+    if(els.m_everInf)    els.m_everInf.textContent    = fmtCount(everInfected);
+    if(els.m_cfr)        els.m_cfr.textContent        = fmtPct(cfr);
+  }
+
+  function setMetricsDash(){
+    const ids = [
+      'm-t','m-N','m-alive',
+      'm-cumInc','m-incRisk','m-riskRate','m-incRate',
+      'm-prevPoint','m-everInf','m-cfr'
+    ];
+    ids.forEach(id=>{
+      const el = document.getElementById(id);
+      if(el) el.textContent = '–';
+    });
+  }
+
+
   // ===========================================================
   // R0 / Rt
   // ===========================================================
@@ -1053,6 +1445,7 @@
     }
 
     updateRDisplaysLive();
+    updateMetrics();
   }
 
   function setToggleRunning(){
@@ -1181,6 +1574,7 @@
     updateSidebarCounts();
     drawCharts();
     updateRDisplaysLive();
+    updateMetrics();
   }
 
   /** Assign vaccination flags to match coverage & efficacy. */
@@ -1218,6 +1612,7 @@
         updateSidebarCounts();
         drawCharts();
         updateRDisplaysLive();
+        updateMetrics();
       }
       return;
     }
@@ -1272,6 +1667,7 @@
     updateSidebarCounts();
     drawCharts();
     updateRDisplaysLive();
+    updateMetrics();
   }
 
   // ===========================================================
@@ -1494,6 +1890,7 @@
     drawCanvas();
     updateSidebarCounts();
     drawCharts();
+    updateMetrics();
 
     // Auto-stop: once stable (no E or I) for several steps
     const stableNow = (I === 0 && E === 0);
@@ -1517,6 +1914,7 @@
       timerEl.textContent = `t=${t.toFixed(0)} days`;
     }
     updateRDisplaysLive();
+    updateMetrics();
   }
 
   // ===========================================================
@@ -1740,7 +2138,7 @@
     // Grid + ticks
     ctx.strokeStyle = "rgba(255,255,255,0.06)";
     ctx.fillStyle = cssVar('--muted');
-    ctx.font = "9px system-ui";
+    ctx.font = "10px system-ui";
 
     const xTicks = 5;
     ctx.textAlign = "center";
@@ -1882,7 +2280,7 @@
     // Grid + ticks
     ctx.strokeStyle = "rgba(255,255,255,0.06)";
     ctx.fillStyle = cssVar('--muted');
-    ctx.font = "9px system-ui";
+    ctx.font = "10px system-ui";
 
     const xTicks = 5;
     ctx.textAlign = "center";
@@ -2154,6 +2552,7 @@
     updateSidebarCounts();
     drawCharts();
     updateRDisplaysLive();
+    updateMetrics();
   });
 
   // Jump back to live state
@@ -2165,6 +2564,7 @@
     updateSidebarCounts();
     drawCharts();
     updateRDisplaysLive();
+    updateMetrics();
   });
 
   // Export time series as CSV
