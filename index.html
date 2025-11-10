@@ -5,195 +5,151 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Outbreak Epidemiology Disease Simulator</title>
 
-  <!--
-    ==============================================================
-    Outbreak Simulator
-    --------------------------------------------------------------
-    - Single-file demo app (HTML + CSS + JS)
-    - Deterministic grid-based SEIRD toy model with vaccination
-    - No external dependencies; runs fully in-browser
-
-    Key implementation notes
-    - State is stored in a central `State` object.
-    - `step()` advances the simulation one dt.
-    - `drawCanvas()` renders the population grid.
-    - `drawCharts()` renders time-series charts for incidence and SEIRD.
-    - UI wiring is in the Events section.
-
-    Typography update
-    - All font sizes now use CSS variables.
-    - Adjust `--fz-base` in :root to scale the app.
-    ==============================================================
-  -->
-
   <style>
-    /* ======================= CSS VARIABLES ======================= */
+    /* Global design tokens: tune typography and weights here */
     :root {
-      /* Font families & rhythm */
       --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
         Roboto, Helvetica, Arial, sans-serif;
       --lh-base: 1.45;
 
-      /* Type scale (derived from --fz-base) */
-      --fz-base: 12px;                     /* change this to scale the app */
-      --fz-3xs: calc(var(--fz-base) * 0.571); /* ~8px  */
-      --fz-2xs: calc(var(--fz-base) * 0.714); /* ~10px */
-      --fz-xs:  calc(var(--fz-base) * 0.857); /* ~12px */
-      --fz-sm:  calc(var(--fz-base) * 0.929); /* ~13px */
-      --fz-md:  calc(var(--fz-base) * 1.000); /* 14px (alias of base) */
-      --fz-lg:  calc(var(--fz-base) * 1.143); /* ~16px */
-      --fz-xl:  calc(var(--fz-base) * 1.429); /* ~20px */
-      --fz-2xl: calc(var(--fz-base) * 1.714); /* ~24px */
-      --fz-3xl: calc(var(--fz-base) * 2.286); /* ~32px */
-      --fz-4xl: calc(var(--fz-base) * 2.857); /* ~40px */
+      --fz-base: 12px;
+      --fz-3xs: calc(var(--fz-base) * 0.571);
+      --fz-2xs: calc(var(--fz-base) * 0.714);
+      --fz-xs:  calc(var(--fz-base) * 0.857);
+      --fz-sm:  calc(var(--fz-base) * 0.929);
+      --fz-md:  calc(var(--fz-base) * 1.000);
+      --fz-lg:  calc(var(--fz-base) * 1.143);
+      --fz-xl:  calc(var(--fz-base) * 1.429);
+      --fz-2xl: calc(var(--fz-base) * 1.714);
+      --fz-3xl: calc(var(--fz-base) * 2.286);
+      --fz-4xl: calc(var(--fz-base) * 2.857);
 
-      /* You can optionally tweak weight variables if needed */
       --fw-regular: 400;
       --fw-medium: 500;
       --fw-semibold: 600;
       --fw-bold: 700;
     }
 
-    /* -------------------- DARK THEME (VS Code + original sim colors) ------------------- */
-:root[data-theme="dark"] {
-  /* VS Code / Monokai-like surfaces */
-  --bg: #1e1e1e;
-  --panel: #252526;
-  --panel-soft: #2d2d30;
-  --canvas-bg: #272822;
+    /* Dark theme: editor-style palette and original simulation colors */
+    :root[data-theme="dark"] {
+      --bg: #1e1e1e;
+      --panel: #252526;
+      --panel-soft: #2d2d30;
+      --canvas-bg: #272822;
 
-  /* Text */
-  --text: #f8f8f2;
-  --muted: #9da5b4;
+      --text: #f8f8f2;
+      --muted: #9da5b4;
 
-  /* UI accents */
-  --accent: #66d9ef;
-  --accent2: #fd971f;
+      --accent: #66d9ef;
+      --accent2: #fd971f;
 
-  /* ✅ Simulation colors restored */
-  --c-sus: #525252;
-  --c-exp: #ffd54a;
-  --c-inf: #ff4d4d;
-  --c-imm: #4cba87;
-  --c-dead: #b00020;
+      --c-sus: #525252;
+      --c-exp: #ffd54a;
+      --c-inf: #ff4d4d;
+      --c-imm: #4cba87;
+      --c-dead: #b00020;
 
-  --vax-eff: #2196f3;
-  --vax-ineff: #2196f3;
+      --vax-eff: #2196f3;
+      --vax-ineff: #2196f3;
 
-  /* Borders & inputs */
-  --border-soft: rgba(255, 255, 255, 0.06);
-  --border-strong: rgba(255, 255, 255, 0.18);
-  --input-bg: #1e1e1e;
-  --input-border: rgba(255, 255, 255, 0.14);
+      --border-soft: rgba(255, 255, 255, 0.06);
+      --border-strong: rgba(255, 255, 255, 0.18);
+      --input-bg: #1e1e1e;
+      --input-border: rgba(255, 255, 255, 0.14);
 
-  /* Pills / tags */
-  --pill-bg: #2d2d30;
-}
+      --pill-bg: #2d2d30;
 
-/* ------------------------ LIGHT THEME (brighter colors) ------------------------ */
-:root[data-theme="light"] {
-  /* Base surfaces */
-  --bg: #fafafa;
-  --panel: #ffffff;
-  --panel-soft: #f5f5f5;
-  --canvas-bg: #ffffff;
+      --shadow-soft: 0 10px 30px rgba(0, 0, 0, 0.55);
+    }
 
-  /* Text */
-  --text: #111827;
-  --muted: #8e908c;
+    /* Light theme: neutral surfaces with higher contrast */
+    :root[data-theme="light"] {
+      --bg: #fafafa;
+      --panel: #ffffff;
+      --panel-soft: #f5f5f5;
+      --canvas-bg: #ffffff;
 
-  /* UI accents (more pop) */
-  --accent: #22c5ff;        /* bright cyan */
-  --accent2: #ff9800;       /* vivid orange */
+      --text: #111827;
+      --muted: #8e908c;
 
-  /* Simulation / chart colors - brighter & clearer */
-  --c-sus: #d4d4d4;         /* light neutral gray */
-  --c-exp: #fbbf24;         /* bright amber */
-  --c-inf: #ef4444;         /* strong red */
-  --c-imm: #22c55e;         /* bright green */
-  --c-dead: #b91c1c;        /* deep red for contrast */
+      --accent: #22c5ff;
+      --accent2: #ff9800;
 
-  /* Vaccination */
-  --vax-eff: #2563eb;       /* strong blue */
-  --vax-ineff: #2563eb;
+      --c-sus: #d4d4d4;
+      --c-exp: #fbbf24;
+      --c-inf: #ef4444;
+      --c-imm: #22c55e;
+      --c-dead: #b91c1c;
 
-  /* Borders & inputs */
-  --border-soft: rgba(0, 0, 0, 0.06);
-  --border-strong: rgba(0, 0, 0, 0.16);
-  --input-bg: #f9f9f9;
-  --input-border: rgba(0, 0, 0, 0.16);
+      --vax-eff: #2563eb;
+      --vax-ineff: #2563eb;
 
-  /* Pills / tags */
-  --pill-bg: #f5f5f5;
-}
+      --border-soft: rgba(0, 0, 0, 0.06);
+      --border-strong: rgba(0, 0, 0, 0.16);
+      --input-bg: #f9f9f9;
+      --input-border: rgba(0, 0, 0, 0.16);
 
-/* Keep VS Code-like controls */
-:root[data-theme="light"] #themeToggle,
-:root[data-theme="light"] #toggleBtn {
-  background: #e7e7e7;
-  color: #272822;
-  border-color: #d4d4d4;
-}
+      --pill-bg: #f5f5f5;
 
+      --shadow-soft: 0 6px 18px rgba(15, 23, 42, 0.12);
+    }
 
-/* VS Code-like controls */
-:root[data-theme="dark"] #themeToggle,
-:root[data-theme="dark"] #toggleBtn {
-  background: #3c3c3c;
-  color: #f8f8f2;
-  border-color: #454545;
-}
+    /* Theme toggle buttons share a consistent look per theme */
+    :root[data-theme="light"] #themeToggle,
+    :root[data-theme="light"] #toggleBtn {
+      background: #e7e7e7;
+      color: #272822;
+      border-color: #d4d4d4;
+    }
 
-/* ------------------------ ACCESSIBLE THEME (LIGHT, HIGH CONTRAST) ------------------
-   Colorblind-friendly & playful, built on light surfaces
------------------------------------------------------------------------------------ */
-:root[data-theme="accessible"] {
-  /* Surfaces */
-  --bg: #ffffff;              /* pure white for max contrast */
-  --panel: #ffffff;
-  --panel-soft: #f2f2f2;
-  --canvas-bg: #ffffff;
+    :root[data-theme="dark"] #themeToggle,
+    :root[data-theme="dark"] #toggleBtn {
+      background: #3c3c3c;
+      color: #f8f8f2;
+      border-color: #454545;
+    }
 
-  /* Text */
-  --text: #111827;            /* very dark gray, readable */
-  --muted: #4b5563;           /* darker muted for readability */
+    /* Accessible theme: high contrast, colorblind-friendly palette */
+    :root[data-theme="accessible"] {
+      --bg: #ffffff;
+      --panel: #ffffff;
+      --panel-soft: #f2f2f2;
+      --canvas-bg: #ffffff;
 
-  /* UI accents (colorblind-safe, code-y) */
-  --accent: #0072b2;          /* strong blue */
-  --accent2: #e69f00;         /* rich amber */
+      --text: #111827;
+      --muted: #4b5563;
 
-  /* Simulation / chart colors (Okabe–Ito inspired, all distinct) */
-  --c-sus: #dddddd;           /* neutral gray for baseline */
-  --c-exp: #0072b2;           /* orange (Exposed) */
-  --c-inf: #e69f00;           /* blue (Infectious) */
-  --c-imm: #009e73;           /* teal/green (Immune) */
-  --c-dead: #3f2a56;          /* magenta (Dead) */
+      --accent: #0072b2;
+      --accent2: #e69f00;
 
-  /* Vaccination: clear, consistent sky blue outline */
-  --vax-eff: #56b4e9;
-  --vax-ineff: #56b4e9;
+      --c-sus: #dddddd;
+      --c-exp: #39deff;
+      --c-inf: #e66000;
+      --c-imm: #009e73;
+      --c-dead: #3f2a56;
 
-  /* Borders & inputs (stronger than default light mode) */
-  --border-soft: rgba(0, 0, 0, 0.14);
-  --border-strong: rgba(0, 0, 0, 0.26);
-  --input-bg: #f9fafb;
-  --input-border: rgba(0, 0, 0, 0.26);
+      --vax-eff: #56b4e9;
+      --vax-ineff: #56b4e9;
 
-  /* Pills / tags */
-  --pill-bg: #f2f2f2;
-}
+      --border-soft: rgba(0, 0, 0, 0.14);
+      --border-strong: rgba(0, 0, 0, 0.26);
+      --input-bg: #f9fafb;
+      --input-border: rgba(0, 0, 0, 0.26);
 
-/* Controls in accessible mode: clear and prominent */
-:root[data-theme="accessible"] #themeToggle,
-:root[data-theme="accessible"] #toggleBtn {
-  background: #111827;
-  color: #f9fafb;
-  border-color: #0072b2;
-}
+      --pill-bg: #f2f2f2;
 
+      --shadow-soft: 0 6px 18px rgba(15, 23, 42, 0.16);
 
+    }
 
-    /* Semantic text colors mapped to existing palette */
+    :root[data-theme="accessible"] #themeToggle,
+    :root[data-theme="accessible"] #toggleBtn {
+      background: #111827;
+      color: #f9fafb;
+      border-color: #0072b2;
+    }
+
+    /* Semantic text helpers mapped to simulation palette */
     .color-sus   { color: var(--c-sus); }
     .color-exp   { color: var(--c-exp); }
     .color-inf   { color: var(--c-inf); }
@@ -232,7 +188,34 @@
       opacity: 0.9;
     }
 
-    /* ======================= BASE LAYOUT ========================= */
+    /* Theme selector in header */
+    #themeSelect {
+      padding: 6px 11px;
+      border-radius: 999px;
+      font-size: var(--fz-2xs);
+      border: 1px solid var(--border-soft);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      backdrop-filter: blur(6px);
+      min-width: 130px;
+    }
+
+    :root[data-theme="light"] #themeSelect,
+    :root[data-theme="accessible"] #themeSelect
+     {
+      background: #e7e7e7;
+      color: #272822;
+      border-color: #d4d4d4;
+    }
+
+    :root[data-theme="dark"] #themeSelect {
+      background: #3c3c3c;
+      color: #f8f8f2;
+      border-color: #454545;
+    }
+
+    /* Layout and typography scaffold */
     * { box-sizing:border-box; }
 
     body {
@@ -259,9 +242,20 @@
     }
 
     header .wrap {
-      position:relative;
+      position:static;
       padding-top:18px;
       padding-bottom:10px;
+    }
+
+    .header-bar {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .header-text {
+      max-width: 780px;
     }
 
     h1 {
@@ -281,24 +275,6 @@
       max-width:780px;
       font-size: var(--fz-sm);
     }
-
-    #themeToggle {
-      position:absolute;
-      top:14px;
-      right:16px;
-      padding:6px 11px;
-      border-radius:999px;
-      font-size: var(--fz-2xs);
-      border:1px solid var(--border-soft);
-      background:transparent;
-      color:var(--muted);
-      cursor:pointer;
-      display:inline-flex;
-      align-items:center;
-      gap:6px;
-      backdrop-filter:blur(6px);
-    }
-    #themeToggle span { font-size: var(--fz-sm); }
 
     #simTimer {
       position:absolute;
@@ -386,13 +362,10 @@
       gap: 14px;
     }
 
-    /* Allow both children (canvasWrap + sidebar) to shrink inside the grid */
     .sim > * { min-width: 0; }
 
-    /* Canvas container: follow the track width; no extra max-width hacks here */
     .canvasWrap { width: 100%; margin: 0; }
 
-    /* Canvas itself: capped and centered inside its cell */
     canvas#sim {
       display: block;
       width: 100%;
@@ -402,7 +375,7 @@
       border-radius: 14px;
     }
 
-    /* Layout: live controls + sim */
+    /* Left: live controls; right: simulation+sidebar or stacked on narrow viewports */
     .simLayout {
       display: grid;
       grid-template-columns: minmax(600px, 700px) minmax(0, 1fr);
@@ -410,12 +383,10 @@
       margin-top: 12px;
     }
 
-    /* Stack controls above sim on smaller widths */
-    @media (max-width: 2000px) {
+    @media (max-width: 1500px) {
       .simLayout { grid-template-columns: 1fr; }
     }
 
-    /* Timeline title */
     .timelineTitle {
       font-size: var(--fz-xs);
       text-transform: uppercase;
@@ -424,44 +395,81 @@
       margin-bottom: 4px;
     }
 
-    .sidebar { position:relative; }
-
-    .status {
-      height:100%;
-      display:flex;
-      flex-direction:column;
-      align-items:center;
-      gap:10px;
-      padding:12px;
+    /* Sidebar hosts the vertical status bar + legend + metrics anchors */
+    .sidebar {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      height: 550px;
     }
 
-    .barsWrap {
-      display:flex;
-      gap:10px;
-      align-items:flex-start;
+    .status {
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      padding: 12px;
     }
 
     .bar {
-      position:relative;
-      width:42px;
-      height:350px;
-      border-radius:10px;
-      background:var(--canvas-bg);
-      border:1px solid var(--border-soft);
-      overflow:hidden;
-      flex:0 0 42px;
+      position: relative;
+      width: 42px;
+      flex: 0 0 42px;
+      height: 100%;
+      border-radius: 10px;
+      background: var(--canvas-bg);
+      border: 1px solid var(--border-soft);
+      overflow: hidden;
+    }
+
+    @media (max-width: 900px) {
+      .sim {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        height: auto;
+        max-height: none;
+      }
+
+      .status {
+        flex: 0 0 auto;
+      }
+
+      .barsWrap {
+        flex: 0 0 auto;
+        align-items: flex-start;
+      }
+
+      .bar {
+        height: 100%;
+      }
+    }
+
+    .barsWrap {
+      display: flex;
+      gap: 10px;
+      align-items: stretch;
+      flex: 1 1 auto;
     }
 
     .seg { width:100%; }
 
     .legend {
-      display:grid;
-      grid-template-columns:12px 1fr;
-      gap:8px 10px;
-      margin-top:0;
-      width:auto;
-      flex:1;
+      display: grid;
+      grid-template-columns: 12px 1fr;
+      gap: 4px 10px;
+      margin-top: 0;
+      width: auto;
+      flex: 0 1 auto;
+      min-width: 0;
+      align-items: flex-start;
+      align-content: flex-start;
     }
+
+    .legend div {
+      white-space: normal;
+    }
+
     .legend .cnt {
       font-size: var(--fz-2xs);
       color:var(--muted);
@@ -678,254 +686,242 @@
       color: var(--accent2);
       border-color: var(--accent2);
     }
-
-    @media (max-width:900px){
-      .sim { grid-template-columns:1fr; }
-    }
-
   </style>
 </head>
 <body>
 <header>
-  <div class="wrap">
-    <button id="themeToggle" type="button" aria-label="Toggle light and dark mode">
-      <span>☀</span> <span>Light mode</span>
-    </button>
+  <div class="wrap header-bar">
+    <div class="header-text">
+      <h1>Outbreak Epidemiology Disease Simulator</h1>
+      <div class="sub">
+        Simulation of disease outbreaks using a toy SEIRD-style model with vaccination and waning immunity.
+        Parameter sets are illustrative, not calibrated for policy decisions. Use as a learning sandbox to
+        explore how changing transmission, duration, mortality, and vaccination assumptions alters dynamics.
+      </div>
+    </div>
 
-    <h1>Outbreak Epidemiology Disease Simulator</h1>
-    <div class="sub">
-      Simulation of disease outbreaks using a toy SEIRD-style model with vaccination and waning immunity.
-      Parameter sets are illustrative, not calibrated for policy decisions. Use as a learning sandbox to
-      explore how changing transmission, duration, mortality, and vaccination assumptions alters dynamics.
+    <div class="header-controls">
+      <select id="themeSelect" aria-label="Select theme">
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+        <option value="accessible">Accessible</option>
+      </select>
     </div>
   </div>
 </header>
 
 <main class="wrap grid" aria-live="polite">
   <section class="panel pad">
-  <!-- ===================== STARTING CONDITIONS ===================== -->
-   <div class="divider-label timelineTitle" >Startup Parameters</div>
-  <div class="row" id="coreRow">
-    <div class="cell">
-      
-      <label>Preset Scenario</label>
-      <select id="scenario">
-        <option value="custom">Custom</option>
-        <option value="rare">Rare Disease</option>
-        <option value="endemic">Endemic Stability</option>
-        <option value="outbreak">Acute Outbreak</option>
-        <option value="flu">Flu-like</option>
-        <option value="covid">COVID-like</option>
-        <option value="measles">Measles-like</option>
-        <option value="ebola">Ebola-like</option>
-        <option value="sars1">SARS-1-like</option>
-        <option value="mers">MERS-like</option>
-        <option value="noro">Norovirus-like</option>
-      </select>
+    <div class="divider-label timelineTitle">Startup Parameters</div>
+    <div class="row" id="coreRow">
+      <div class="cell">
+        <label>Preset Scenario</label>
+        <select id="scenario">
+          <option value="custom">Custom</option>
+          <option value="rare">Rare Disease</option>
+          <option value="endemic">Endemic Stability</option>
+          <option value="outbreak">Acute Outbreak</option>
+          <option value="flu">Flu-like</option>
+          <option value="covid">COVID-like</option>
+          <option value="measles">Measles-like</option>
+          <option value="ebola">Ebola-like</option>
+          <option value="sars1">SARS-1-like</option>
+          <option value="mers">MERS-like</option>
+          <option value="noro">Norovirus-like</option>
+        </select>
+      </div>
+
+      <div class="cell">
+        <label>Population N (<span id="NVal">5000</span>)</label>
+        <input
+          id="N"
+          class="popSlider"
+          type="range"
+          min="2"
+          max="10000"
+          step="1"
+          value="5000"
+        />
+      </div>
+
+      <div class="cell w2">
+        <label>Contact Neighbors (4 or 6)</label>
+        <select id="contacts">
+          <option value="4" selected>4 · Square</option>
+          <option value="6">6 · Hex</option>
+        </select>
+      </div>
+
+      <div class="cell w2">
+        <label>Seed</label>
+        <input id="seed" type="number" value="42" />
+      </div>
+
+      <div class="cell w2">
+        <label>Stochastic For Infection</label>
+        <select id="stochastic">
+          <option value="1">On</option>
+          <option value="0">Off</option>
+        </select>
+      </div>
+
+      <div class="cell w2">
+        <label>Initial Infected</label>
+        <input id="I0" type="number" min="0" max="10000" step="1" value="5" />
+      </div>
+
+      <div class="cell w2">
+        <label>Initial Immune</label>
+        <input id="R0" type="number" min="0" max="10000" step="1" value="0" />
+      </div>
+
+      <div class="cell w2">
+        <label>
+          Mutation / waning (immune → susceptible / day)
+          <span class="hint" id="mutRateVal">0.000</span>
+        </label>
+        <input id="mutRate" type="range" min="0" max="0.5" step="0.005" value="0" />
+      </div>
+
+      <div class="cell w2">
+        <label>
+          Days Infectious
+          <span class="hint" id="daysInfVal">10.0</span>
+        </label>
+        <input id="daysInf" type="range" min="1" max="30" step="0.5" value="10" />
+      </div>
+
+      <div class="cell w2">
+        <label>Time step (days)</label>
+        <input id="dt" type="number" min="0.1" max="10" step="0.1" value="1" />
+      </div>
+
+      <div class="cell w2">
+        <label>Auto-stop when stable</label>
+        <select id="autoStop">
+          <option value="1">On</option>
+          <option value="0">Off</option>
+        </select>
+      </div>
     </div>
 
-    <div class="cell">
-      <label>Population N (<span id="NVal">5000</span>)</label>
-      <input
-        id="N"
-        class="popSlider"
-        type="range"
-        min="2"
-        max="10000"
-        step="1"
-        value="5000"
-      />
-    </div>
+    <div class="simLayout">
+      <div class="panel pad">
+        <div class="row">
+          <div class="cell w12">
+            <div class="divider-label timelineTitle">Live parameters</div>
+          </div>
 
-    <div class="cell w2">
-      <label>Contact Neighbors (4 or 6)</label>
-      <select id="contacts">
-        <option value="4" selected>4 · Square</option>
-        <option value="6">6 · Hex</option>
-      </select>
-    </div>
+          <div class="cell w4">
+            <label>Infection rate β <span class="hint" id="betaVal"></span></label>
+            <input id="beta" type="range" min="0" max="1.2" step="0.01" value="0.35" />
+          </div>
+          <div class="cell w4">
+            <label>Recovery rate γ <span class="hint" id="gammaVal"></span></label>
+            <input id="gamma" type="range" min="0" max="1" step="0.01" value="0.1" />
+          </div>
+          <div class="cell w4">
+            <label>Mortality rate μ <span class="hint" id="muVal"></span></label>
+            <input id="mu" type="range" min="0" max="0.5" step="0.005" value="0.01" />
+          </div>
 
-    <div class="cell w2">
-      <label>Seed</label>
-      <input id="seed" type="number" value="42" />
-    </div>
+          <div class="cell w4">
+            <label>Vaccine / Medication Efficacy (%) <span class="hint" id="veVal"></span></label>
+            <input id="ve" type="range" min="0" max="100" step="1" value="100" />
+          </div>
+          <div class="cell w4">
+            <label>Vaccination Coverage (%) <span class="hint" id="vaxCovVal">0%</span></label>
+            <input id="vaxCov" type="range" min="0" max="100" step="1" value="0" />
+          </div>
+          <div class="cell w4">
+            <label>Daily Vaccination Rate (%-points/day) <span class="hint" id="vaxRateVal">0.0 pts/day</span></label>
+            <input id="vaxRate" type="range" min="0" max="5" step="0.1" value="0" />
+          </div>
 
-    <div class="cell w2">
-      <label>Stochastic For Infection</label>
-      <select id="stochastic">
-        <option value="1">On</option>
-        <option value="0">Off</option>
-      </select>
-    </div>
+          <div class="cell w6">
+            <span class="hint">
+              R₀ (theoretical)=<span id="R0disp">–</span>
+            </span>
+            <span class="hint">
+              · R<sub>t</sub> (approx)=<span id="RtDisp">–</span>
+            </span>
+          </div>
 
-    <div class="cell w2">
-      <label>Initial Infected</label>
-      <input id="I0" type="number" min="0" max="10000" step="1" value="5" />
-    </div>
-
-    <div class="cell w2">
-      <label>Initial Immune</label>
-      <input id="R0" type="number" min="0" max="10000" step="1" value="0" />
-    </div>
-
-    <div class="cell w2">
-      <label>
-        Mutation / waning (immune → susceptible / day)
-        <span class="hint" id="mutRateVal">0.000</span>
-      </label>
-      <input id="mutRate" type="range" min="0" max="0.5" step="0.005" value="0" />
-    </div>
-
-    <div class="cell w2">
-      <label>
-        Days Infectious
-        <span class="hint" id="daysInfVal">10.0</span>
-      </label>
-      <input id="daysInf" type="range" min="1" max="30" step="0.5" value="10" />
-    </div>
-
-    <div class="cell w2">
-      <label>Time step (days)</label>
-      <input id="dt" type="number" min="0.1" max="10" step="0.1" value="1" />
-    </div>
-
-    <div class="cell w2">
-      <label>Auto-stop when stable</label>
-      <select id="autoStop">
-        <option value="1">On</option>
-        <option value="0">Off</option>
-      </select>
-    </div>
-  </div>
-
-
-  <!-- ===================== Live Controls + Simulation Layout ===================== -->
-  <div class="simLayout">
-    <!-- Live-adjustable controls (after divider) -->
-    <div class="panel pad">
-      <div class="row">
-        <div class="cell w12">
-          <div class="divider-label timelineTitle" >Live parameters</div>
-        </div>
-
-        <!-- Now your live sliders -->
-        <div class="cell w4">
-          <label>Infection rate β <span class="hint" id="betaVal"></span></label>
-          <input id="beta" type="range" min="0" max="1.2" step="0.01" value="0.35" />
-        </div>
-        <div class="cell w4">
-          <label>Recovery rate γ <span class="hint" id="gammaVal"></span></label>
-          <input id="gamma" type="range" min="0" max="1" step="0.01" value="0.1" />
-        </div>
-        <div class="cell w4">
-          <label>Mortality rate μ <span class="hint" id="muVal"></span></label>
-          <input id="mu" type="range" min="0" max="0.5" step="0.005" value="0.01" />
-        </div>
-
-        <div class="cell w4">
-          <label>Vaccine / Medication Efficacy (%) <span class="hint" id="veVal"></span></label>
-          <input id="ve" type="range" min="0" max="100" step="1" value="100" />
-        </div>
-        <div class="cell w4">
-          <label>Vaccination Coverage (%) <span class="hint" id="vaxCovVal">0%</span></label>
-          <input id="vaxCov" type="range" min="0" max="100" step="1" value="0" />
-        </div>
-        <div class="cell w4">
-          <label>Daily Vaccination Rate (%-points/day) <span class="hint" id="vaxRateVal">0.0 pts/day</span></label>
-          <input id="vaxRate" type="range" min="0" max="5" step="0.1" value="0" />
-        </div>
-        
-        <!-- Reset + R0/Rt/t summary -->
-        <div class="cell w6">
-          <span class="hint">
-            R₀ (theoretical)=<span id="R0disp">–</span>
-          </span>
-          <span class="hint">
-            · R<sub>t</sub> (approx)=<span id="RtDisp">–</span>
-          </span>
-        </div>
-
-        <!-- Timeline inside live parameters -->
-        <div class="cell w12">
-          <div class="timePanel">
-            <div class="timelineTitle">Timeline</div>
-            <div class="scrubWrap">
-              <button class="btn" id="toggleBtn" aria-pressed="false">▶ Run</button>
-              <button class="btn ghost" id="resetBtn">Reset</button>
-              <span class="hint">t=<span id="timeDisp">0</span> days</span>
-
-              <div class="hint">Viewing: <span id="viewLabel">Live</span></div>
-
-            </div>
-            <div class="scrubWrap">
-              <span class="hint" id="scrubMin">0</span>
-              <input type="range" id="scrubber" min="0" max="0" value="0" />
-              <span class="hint" id="scrubVal">0</span>
-              <span class="hint">/</span>
-              <span class="hint" id="scrubMax">0</span>
-              <span class="hint">days</span>
+          <div class="cell w12">
+            <div class="timePanel">
+              <div class="timelineTitle">Timeline</div>
+              <div class="scrubWrap">
+                <button class="btn" id="toggleBtn" aria-pressed="false">▶ Run</button>
+                <button class="btn ghost" id="resetBtn">Reset</button>
+                <span class="hint">t=<span id="timeDisp">0</span> days</span>
+                <div class="hint">Viewing: <span id="viewLabel">Live</span></div>
+              </div>
+              <div class="scrubWrap">
+                <span class="hint" id="scrubMin">0</span>
+                <input type="range" id="scrubber" min="0" max="0" value="0" />
+                <span class="hint" id="scrubVal">0</span>
+                <span class="hint">/</span>
+                <span class="hint" id="scrubMax">0</span>
+                <span class="hint">days</span>
+              </div>
             </div>
           </div>
+
         </div>
+      </div>
+
+      <div class="sim">
+        <div class="canvasWrap panel pad">
+          <canvas id="sim" width="900" height="520" aria-label="Population grid"></canvas>
+        </div>
+        <aside class="sidebar panel">
+          <div class="status">
+            <div class="barsWrap">
+              <div class="bar" aria-label="Status bar">
+                <div class="seg" id="seg-imm"  style="background:var(--c-imm);height:0%"></div>
+                <div class="seg" id="seg-exp"  style="background:var(--c-exp);height:0%"></div>
+                <div class="seg" id="seg-inf"  style="background:var(--c-inf);height:0%"></div>
+                <div class="seg" id="seg-sus"  style="background:var(--c-sus);height:100%"></div>
+                <div class="seg" id="seg-dead" style="background:var(--c-dead);height:0%"></div>
+              </div>
+
+              <div class="legend">
+                <div class="dot" style="background:var(--c-sus)"></div>
+                <div>Susceptible <span id="pctS">100%</span> <span id="cntS" class="cnt">(0)</span></div>
+
+                <div class="dot" style="background:var(--c-exp)"></div>
+                <div>Exposed <span id="pctE">0%</span> <span id="cntE" class="cnt">(0)</span></div>
+
+                <div class="dot" style="background:var(--c-inf)"></div>
+                <div>Infectious <span id="pctI">0%</span> <span id="cntI" class="cnt">(0)</span></div>
+
+                <div class="dot" style="background:var(--c-imm)"></div>
+                <div>Immune <span id="pctR">0%</span> <span id="cntR" class="cnt">(0)</span></div>
+
+                <div class="dot" style="background:var(--c-dead)"></div>
+                <div>Dead <span id="pctD">0%</span> <span id="cntD" class="cnt">(0)</span></div>
+
+                <div class="vaxLegendIcon"></div>
+                <div>
+                  Vaccinated &amp; protected
+                  <span id="pctVeff">0%</span>
+                  <span id="cntVeff" class="cnt">(0)</span>
+                </div>
+
+                <div class="vaxLegendIcon dotted"></div>
+                <div>
+                  Vaccinated, not effectively protected
+                  <span id="pctVineff">0%</span>
+                  <span id="cntVineff" class="cnt">(0)</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </aside>
 
       </div>
     </div>
 
-    <!-- Simulation & Sidebar -->
-    <div class="sim">
-      <div class="canvasWrap panel pad">
-        <canvas id="sim" width="900" height="520" aria-label="Population grid"></canvas>
-      </div>
-      <aside class="sidebar panel">
-        <div class="status">
-          <div class="barsWrap">
-            <div class="bar" aria-label="Status bar">
-              <div class="seg" id="seg-imm"  style="background:var(--c-imm);height:0%"></div>
-              <div class="seg" id="seg-exp"  style="background:var(--c-exp);height:0%"></div>
-              <div class="seg" id="seg-inf"  style="background:var(--c-inf);height:0%"></div>
-              <div class="seg" id="seg-sus"  style="background:var(--c-sus);height:100%"></div>
-              <div class="seg" id="seg-dead" style="background:var(--c-dead);height:0%"></div>
-            </div>
-
-            <!-- Legend now sits to the right of the bar, same div -->
-            <div class="legend">
-              <div class="dot" style="background:var(--c-sus)"></div>
-              <div>Susceptible <span id="pctS">100%</span> <span id="cntS" class="cnt">(0)</span></div>
-
-              <div class="dot" style="background:var(--c-exp)"></div>
-              <div>Exposed <span id="pctE">0%</span> <span id="cntE" class="cnt">(0)</span></div>
-
-              <div class="dot" style="background:var(--c-inf)"></div>
-              <div>Infectious <span id="pctI">0%</span> <span id="cntI" class="cnt">(0)</span></div>
-
-              <div class="dot" style="background:var(--c-imm)"></div>
-              <div>Immune <span id="pctR">0%</span> <span id="cntR" class="cnt">(0)</span></div>
-
-              <div class="dot" style="background:var(--c-dead)"></div>
-              <div>Dead <span id="pctD">0%</span> <span id="cntD" class="cnt">(0)</span></div>
-
-              <div class="vaxLegendIcon"></div>
-              <div>
-                Vaccinated &amp; protected
-                <span id="pctVeff">0%</span>
-                <span id="cntVeff" class="cnt">(0)</span>
-              </div>
-
-              <div class="vaxLegendIcon dotted"></div>
-              <div>
-                Vaccinated, not effectively protected
-                <span id="pctVineff">0%</span>
-                <span id="cntVineff" class="cnt">(0)</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </aside>
-
-    </div>
-  </div>
-
-    <!-- ===================== Charts Row ===================== -->
     <div class="panel pad chartsPanel">
       <div class="chartsRow">
         <div class="chartCell">
@@ -960,7 +956,6 @@
       </div>
     </div>
 
-    <!-- ===================== Epidemiologic Metrics ===================== -->
     <div class="panel pad metricsPanel">
       <div class="metricsTitle">Epidemiologic Summary at Viewed Time</div>
       <div class="metricsSub">
@@ -968,7 +963,6 @@
       </div>
 
       <div class="metricsGrid">
-        <!-- Block 1: Time & population -->
         <div class="metricsBlock">
           <div class="metricsBlockTitle">Context</div>
           <table class="metricsTable">
@@ -992,7 +986,6 @@
           </table>
         </div>
 
-        <!-- Block 2: Incidence-style measures -->
         <div class="metricsBlock">
           <div class="metricsBlockTitle">
             <span class="tag tag-inc">
@@ -1042,7 +1035,6 @@
           </table>
         </div>
 
-        <!-- Block 3: Prevalence & severity -->
         <div class="metricsBlock">
           <div class="metricsBlockTitle">
             <span class="tag tag-prev">
@@ -1087,7 +1079,6 @@
       </div>
     </div>
 
-    <!-- ===================== Export ===================== -->
     <div class="panel pad" style="margin-top:12px">
       <button class="btn ghost" id="exportCSV">Export Time Series (CSV)</button>
     </div>
@@ -1101,75 +1092,49 @@
 <script>
 'use strict';
 (function(){
+  /* Utility helpers kept local to avoid global leaks */
   function clamp(x,a,b){return Math.max(a,Math.min(b,x));}
   const $ = sel => document.querySelector(sel);
 
-  // ===========================================================
-  // THEME & APP BOOTSTRAP
-  // ===========================================================
+  /* Theme bootstrap: reads persisted preference, then triggers a full repaint */
   const root = document.documentElement;
   const THEMES = ['dark', 'light', 'accessible'];
   const storedTheme = localStorage.getItem('sim-theme');
-
-  // Fallback to first known theme if stored value is invalid
   const initialTheme = THEMES.includes(storedTheme) ? storedTheme : 'light';
   root.setAttribute('data-theme', initialTheme);
 
+  const themeSelect = $('#themeSelect');
 
-  const themeToggle = $('#themeToggle');
+  function applyTheme(theme) {
+    const next = THEMES.includes(theme) ? theme : 'light';
+    root.setAttribute('data-theme', next);
+    localStorage.setItem('sim-theme', next);
 
-  function syncThemeToggle(){
-    if (!themeToggle) return;
-    const current = root.getAttribute('data-theme') || 'light';
+    // Theme affects all drawing colors, so redraw immediately
+    drawCanvas();
+    drawCharts();
+    updateSidebarCounts();
+    updateRDisplaysLive();
+    updateMetrics();
 
-    let label = '';
-    let icon = '';
-
-    if (current === 'dark') {
-      icon = '';
-      label = 'Light mode';
-    } else if (current === 'light') {
-      icon = '';
-      label = 'Accessible mode';
-    } else {
-      // accessible → next is dark
-      icon = '';
-      label = 'Dark mode';
+    if (themeSelect && themeSelect.value !== next) {
+      themeSelect.value = next;
     }
-
-    themeToggle.innerHTML = `<span>${icon}</span> <span>${label}</span>`;
   }
 
-
-  if (themeToggle) {
-    themeToggle.addEventListener('click', () => {
-      const current = root.getAttribute('data-theme') || 'light';
-      const idx = THEMES.indexOf(current);
-      const next = THEMES[(idx + 1 + THEMES.length) % THEMES.length];
-
-      root.setAttribute('data-theme', next);
-      localStorage.setItem('sim-theme', next);
-
-      drawCanvas();
-      drawCharts();
-      updateSidebarCounts();
-      updateRDisplaysLive();
-      updateMetrics();
-      syncThemeToggle();
+  if (themeSelect) {
+    themeSelect.value = initialTheme;
+    themeSelect.addEventListener('change', (e) => {
+      applyTheme(e.target.value);
     });
   }
-
-
-  syncThemeToggle();
 
   const yearEl = $('#year');
   if(yearEl){
     yearEl.textContent = new Date().getFullYear();
   }
 
-  // ===========================================================
-  // RNG / DETERMINISM
-  // ===========================================================
+  /* Pseudo-random generator override for reproducible runs using user-provided seed */
   function setSeed(s){
     let seed = (s>>>0) || 1;
     Math.random = function(){
@@ -1191,9 +1156,7 @@
     return arr;
   }
 
-  // ===========================================================
-  // MODEL & STATE
-  // ===========================================================
+  /* State encoding for cell-level SEIRD status */
   const STATE = {
     S:0,
     E:1,
@@ -1202,16 +1165,10 @@
     D:4
   };
 
-  /**
-   * @typedef {Object} Person
-   * @property {number} col
-   * @property {number} row
-   * @property {number} state - one of STATE
-   * @property {0|1} v - vaccinated flag
-   * @property {0|1} vEff - effective vaccination flag (all-or-nothing protection)
-   * @property {0|1} everInf - has ever been infected via S→E (for CI/CFR)
+  /*
+   * Central DOM handle map:
+   * keep all querySelector calls in one place so wiring is easy to inspect.
    */
-
   const els = {
     scenario:$('#scenario'),
     N:$('#N'), I0:$('#I0'), R0:$('#R0'), dt:$('#dt'),
@@ -1253,6 +1210,11 @@
     m_cfr: $('#m-cfr')
   };
 
+  /*
+   * Simulation master state:
+   * - Holds parameters, grid, time series, snapshots, and run status.
+   * - All derived views (charts, metrics, legend) read from this object.
+   */
   const State = {
     N:5000,
     dt:1,
@@ -1280,18 +1242,14 @@
     },
 
     snapshots:[],
-
     viewIndex:null,
-
     stableCounter:0,
 
-    // Tracked unique ever-infected (via S→E), for CI/CFR/IR
+    // Count of unique individuals ever infected via S→E; drives CI/CFR outputs.
     everInfectedCount:0
   };
 
-  // ===========================================================
-  // AGGREGATES & R(t)
-  // ===========================================================
+  /* Snapshot helper: provides the "viewed" grid when scrubbing through history */
   function getViewSnapshot(){
     const idx = State.viewIndex;
     if (idx != null && State.snapshots[idx]) {
@@ -1300,6 +1258,11 @@
     return null;
   }
 
+  /*
+   * Aggregate current compartment sizes for either:
+   * - selected snapshot (scrubber position), or
+   * - live state (when not scrubbing).
+   */
   function computeAggregatesFromCurrentView(){
     const snap = getViewSnapshot();
     const src = snap || State.people;
@@ -1325,6 +1288,7 @@
     return {N,S,E,I,R,D,vEff,vIneff};
   }
 
+  /* Push aggregate values into sidebar stacked bar + legend counts */
   function updateSidebarFromAggregates(agg){
     const { N, S, E, I, R, D, vEff, vIneff } = agg;
     const pct = x => 100 * x / Math.max(1, N);
@@ -1367,9 +1331,7 @@
     updateSidebarFromAggregates(agg);
   }
 
-  // ===========================================================
-  // VACCINATION HELPERS
-  // ===========================================================
+  /* Vaccination coverage calculations for UI sync */
   function computeVaxStats(){
     const N = State.people.length || 1;
     let vAll = 0;
@@ -1392,9 +1354,11 @@
     }
   }
 
-  // ===========================================================
-  // EPIDEMIOLOGIC METRICS TABLE
-  // ===========================================================
+  /*
+   * Metrics table renderer:
+   * - Uses time-series plus unique ever-infected count.
+   * - Reads either the live tail or currently scrubbed index.
+   */
   function updateMetrics(){
     const s = State.series;
     const len = s.t.length;
@@ -1418,21 +1382,14 @@
     const N = State.N || (S + E + I + R + D) || 1;
     const atRisk0 = Math.max(1, N - (State.I0 || 0) - (State.R0init || 0));
 
-    // Ever infected: tracked unique individuals with ≥1 S→E
     const everInfected = (s.everInf && s.everInf[idx] != null)
       ? s.everInf[idx]
       : (State.everInfectedCount || 0);
 
-    // Cumulative incidence (risk) over [0, t]
     const cumIncRisk = atRisk0 > 0 ? (everInfected / atRisk0) : NaN;
-
-    // Incidence risk: same quantity
     const incRisk = cumIncRisk;
-
-    // Average risk per day (non-standard label, for teaching)
     const riskRate = (t > 0 && atRisk0 > 0) ? (cumIncRisk / t) : NaN;
 
-    // Person-time at risk (toy: sum S_j * Δt)
     let ptAtRisk = 0;
     for(let j = 0; j <= idx; j++){
       const Sj = s.S[j] ?? S;
@@ -1443,11 +1400,8 @@
     }
     const incRate = ptAtRisk > 0 ? (everInfected / ptAtRisk) : NaN;
 
-    // Point prevalence of infectious at time t (among alive)
     const alive = Math.max(1, N - D);
     const prevPoint = I / alive;
-
-    // Case fatality risk (toy): deaths among ever infected
     const cfr = everInfected > 0 ? (D / everInfected) : NaN;
 
     const fmtPct = x =>
@@ -1488,9 +1442,7 @@
     });
   }
 
-  // ===========================================================
-  // R0 / Rt (approximate, SIR-style)
-  // ===========================================================
+  /* R0/Rt display: quick teaching aids derived from β, γ, and current S(t) */
   function computeR0(){
     const beta=+els.beta.value, gamma=+els.gamma.value;
     return gamma>0? (beta/gamma):Infinity;
@@ -1510,9 +1462,7 @@
     els.RtDisp.textContent = Number.isFinite(Rt) ? Rt.toFixed(2) : '∞';
   }
 
-  // ===========================================================
-  // UI SYNC HELPERS
-  // ===========================================================
+  /* Keep all slider labels, derived parameters, and metrics visually in sync */
   function syncSliders(){
     if(els.betaVal)  els.betaVal.textContent  = Number(els.beta.value).toFixed(2);
     if(els.gammaVal) els.gammaVal.textContent = Number(els.gamma.value).toFixed(2);
@@ -1554,6 +1504,7 @@
     els.toggle.setAttribute('aria-pressed','false');
   }
 
+  /* Allows user-friendly "days infectious" slider; internally updates γ */
   function applyDaysInfToGamma(){
     if(!els.daysInf || !els.gamma) return;
     const days = +els.daysInf.value || 10;
@@ -1561,25 +1512,20 @@
     els.gamma.value = g.toFixed(2);
   }
 
-  // ===========================================================
-  // CHART CANVAS SIZING
-  // ===========================================================
+  /* Chart canvas sizing: responsive + HiDPI aware */
   function prepareChartCanvas(c){
     if (!c || !c.parentElement) return;
     const parent = c.parentElement;
     const dpr = window.devicePixelRatio || 1;
 
-    // CSS pixel size
     let cssWidth = parent.clientWidth * 0.94;
     if (cssWidth <= 0) cssWidth = 400;
 
     let cssHeight = Math.max(130, Math.round(cssWidth * 0.35));
 
-    // Apply CSS size
     c.style.width = cssWidth + "px";
     c.style.height = cssHeight + "px";
 
-    // Backing store size in device pixels
     const displayWidth = Math.floor(cssWidth * dpr);
     const displayHeight = Math.floor(cssHeight * dpr);
 
@@ -1588,7 +1534,6 @@
       c.height = displayHeight;
     }
 
-    // Draw using CSS pixel coordinates
     const ctx = c.getContext("2d");
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
@@ -1598,7 +1543,7 @@
     prepareChartCanvas(els.sirChart);
   }
 
-  // ===================== SIM CANVAS SIZING =====================
+  /* Simulation canvas sizing mirrors chart strategy for a fixed aspect ratio */
   function resizeSimCanvas() {
     const c = els.simCanvas;
     if (!c) return;
@@ -1607,10 +1552,12 @@
     if (!wrapper) return;
 
     const dpr = window.devicePixelRatio || 1;
+    const styles = getComputedStyle(wrapper);
+    const paddingX =
+      parseFloat(styles.paddingLeft) + parseFloat(styles.paddingRight);
 
-    // Use the real rendered width of the wrapper
-    const available = wrapper.getBoundingClientRect().width || 900;
-    const cssWidth = Math.min(available, 900); // respect your cap
+    const availableOuter = wrapper.getBoundingClientRect().width || 900;
+    const cssWidth = Math.min(availableOuter - paddingX, 900);
     const aspect = 520 / 900;
     const cssHeight = cssWidth * aspect;
 
@@ -1629,9 +1576,13 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
-  // ===========================================================
-  // INITIALIZATION & RESET
-  // ===========================================================
+  /*
+   * initPeople:
+   * - Builds grid layout based on N
+   * - Applies initial immune/infected
+   * - Allocates time series and snapshots
+   * - Applies initial vaccination and redraws everything
+   */
   function initPeople(){
     applyDaysInfToGamma();
     syncSliders();
@@ -1657,19 +1608,16 @@
 
     const idxs = shuffle([...Array(N).keys()]);
 
-    // Initial immune
     for(let i=0;i<R0init && i<idxs.length;i++){
       State.people[idxs[i]].state = STATE.R;
     }
 
-    // Initial infected (prevalent at t=0, excluded from incident CI)
     let used = R0init;
     let assignedI = 0;
     while(assignedI < I0 && used < idxs.length){
       const p = State.people[idxs[used]];
       if(p.state === STATE.S){
         p.state = STATE.I;
-        // p.everInf remains 0: not counted as incident infection
         assignedI++;
       }
       used++;
@@ -1706,6 +1654,7 @@
     updateMetrics();
   }
 
+  /* Initial vaccination assignment for startup or scenario changes */
   function assignVaccinationInitial(){
     const cov = (+els.vaxCov.value||0)/100;
     const ve = (+els.ve.value||0)/100;
@@ -1722,6 +1671,11 @@
     }
   }
 
+  /*
+   * branchFromCurrent:
+   * - Used when user scrubs to a past time and changes parameters.
+   * - Rebuilds live state from chosen snapshot and optionally reassigns vaccination.
+   */
   function branchFromCurrent({reassignVaccination}){
     const len = State.series.t.length;
     const haveHistory = len>0 && State.snapshots.length>=len;
@@ -1793,9 +1747,11 @@
     updateMetrics();
   }
 
-  // ===========================================================
-  // NEIGHBORHOOD LOGIC
-  // ===========================================================
+  /*
+   * Neighborhood logic:
+   * - 4-neighbor: von Neumann (grid)
+   * - 6-neighbor: offset hex approximation using row parity.
+   */
   function infectiousNeighborCount(p, infSet, contact){
     const col = p.col;
     const row = p.row;
@@ -1834,9 +1790,12 @@
     return k;
   }
 
-  // ===========================================================
-  // SIMULATION STEP
-  // ===========================================================
+  /*
+   * Core update step:
+   * - Applies SEIRD transitions per cell.
+   * - Applies vaccination flow and waning.
+   * - Records time series + snapshot for scrubbing.
+   */
   function step(){
     const beta    = +els.beta.value;
     const gamma   = +els.gamma.value;
@@ -1860,15 +1819,15 @@
     });
 
     const newStates = curStates.slice();
-    let newI = 0;              // new I (for display incidence)
-    let newIncidents = 0;      // new unique S→E infections (for CI/CFR)
+    let newI = 0;
+    let newIncidents = 0;
 
     for(let i=0;i<N;i++){
       const p = State.people[i];
       const s = curStates[i];
 
       if(s===STATE.S){
-        if(p.v && p.vEff) continue; // effectively vaccinated: no infection
+        if(p.v && p.vEff) continue;
         const kInf = infectiousNeighborCount(p, infSet, contact);
         if(kInf>0){
           const prob = 1 - Math.exp(-beta * kInf * dt);
@@ -1892,7 +1851,6 @@
         }
       }
       else if(s===STATE.E){
-        // Latent period: fixed hazard ~0.5/day (toy)
         if(Math.random() < 0.5*dt){
           newStates[i] = STATE.I;
           newI++;
@@ -1910,10 +1868,8 @@
       }
     }
 
-    // Update ever-infected count (unique individuals)
     State.everInfectedCount += newIncidents;
 
-    // Mutation / waning: immune or effectively vaccinated may return to S
     if(mutRate > 0){
       const pMut = 1 - Math.exp(-mutRate * dt);
       for(let i=0;i<N;i++){
@@ -1926,18 +1882,15 @@
             newStates[i] = STATE.S;
             person.v = 0;
             person.vEff = 0;
-            // person.everInf is NOT reset: they remain "ever infected"
           }
         }
       }
     }
 
-    // Apply updated states
     for(let i=0;i<N;i++){
       State.people[i].state = newStates[i];
     }
 
-    // Daily vaccination increment (toy flow)
     if(vaxRate > 0){
       const stepPoints = vaxRate * dt;
       let targetNew = Math.round((stepPoints/100) * N);
@@ -1965,7 +1918,6 @@
       }
     }
 
-    // Recompute compartments and vax fractions
     let S=0,E=0,I=0,R=0,D=0;
     let vAll=0, vEff=0;
     for(const p of State.people){
@@ -2005,7 +1957,6 @@
     State.series.vEffPct.push(vEffPct);
     State.series.everInf.push(State.everInfectedCount);
 
-    // Snapshot for scrubbing
     State.snapshots.push(
       State.people.map(p => ({
         state:p.state,
@@ -2046,16 +1997,17 @@
     updateMetrics();
   }
 
-  // ===========================================================
-  // TIMELINE & DRAWING
-  // ===========================================================
+  /*
+   * drawCanvas:
+   * - Visualizes individuals as dots in either grid or hex layout.
+   * - Respects scrubbed snapshot when viewing history.
+   */
   function drawCanvas(){
     const c = els.simCanvas;
     if (!c) return;
     const ctx = c.getContext('2d');
     const dpr = window.devicePixelRatio || 1;
 
-    // Use CSS pixels; setTransform was applied in resizeSimCanvas
     const W = (c.clientWidth || c.width / dpr);
     const H = (c.clientHeight || c.height / dpr);
 
@@ -2160,6 +2112,11 @@
     return cssVar('--c-dead');
   }
 
+  /*
+   * Scrubber:
+   * - Maps indices onto the recorded time series.
+   * - When viewIndex is null, charts and canvas show live tail.
+   */
   function refreshScrubber(){
     const len = State.series.t.length;
     const maxIndex = Math.max(0, len-1);
@@ -2180,21 +2137,23 @@
     if(els.scrubVal) els.scrubVal.textContent = currentT.toFixed(0);
   }
 
-  // ===========================================================
-  // CHARTS
-  // ===========================================================
+  /* Chart rendering entry point */
   function drawCharts(){
     drawIncVaxChart();
     drawSIRChart();
   }
 
+  /*
+   * Incidence + prevalence + vaccination chart:
+   * - Left axis: counts
+   * - Right axis: % vaccinated
+   */
   function drawIncVaxChart(){
     const c = els.incVaxChart;
     if (!c) return;
     const ctx = c.getContext('2d');
     const dpr = window.devicePixelRatio || 1;
 
-    // Work in CSS pixels (because we setTransform in prepareChartCanvas)
     const W = (c.clientWidth || c.width / dpr);
     const H = (c.clientHeight || c.height / dpr);
 
@@ -2215,7 +2174,6 @@
     const plotW = W - padL - padR;
     const plotH = H - padT - padB;
 
-    // Axis labels use CSS-based font vars
     ctx.fillStyle = cssVar('--muted');
     ctx.font = `${cssVar('--fz-2xs')} ${cssVar('--font-sans')}`;
     ctx.textAlign = "center";
@@ -2259,7 +2217,6 @@
     const yForPct = pct =>
       (H - padB) - (pct / 100) * plotH;
 
-    // Grid + ticks
     ctx.strokeStyle = "rgba(255,255,255,0.06)";
     ctx.fillStyle = cssVar('--muted');
     ctx.font = `${cssVar('--fz-2xs')} ${cssVar('--font-sans')}`;
@@ -2309,7 +2266,6 @@
     ctx.lineTo(W - padR, H - padB);
     ctx.stroke();
 
-    // Incidence
     ctx.strokeStyle = cssVar('--c-exp');
     ctx.lineWidth = 1.4;
     ctx.beginPath();
@@ -2320,7 +2276,6 @@
     }
     ctx.stroke();
 
-    // Prevalence (I)
     ctx.strokeStyle = cssVar('--accent2');
     ctx.lineWidth = 1.2;
     ctx.beginPath();
@@ -2331,7 +2286,6 @@
     }
     ctx.stroke();
 
-    // Vaccination coverage
     if(s.vAllPct && s.vAllPct.length){
       ctx.strokeStyle = cssVar('--accent');
       ctx.lineWidth = 1.2;
@@ -2345,6 +2299,10 @@
     }
   }
 
+  /*
+   * SEIRD chart:
+   * - Shows compartment sizes over time as proportions of N.
+   */
   function drawSIRChart(){
     const c = els.sirChart;
     if (!c) return;
@@ -2457,9 +2415,11 @@
     plot(s.D, '--c-dead');
   }
 
-  // ===========================================================
-  // EVENTS & UI WIRING
-  // ===========================================================
+  /*
+   * Event bindings:
+   * - Scenarios, sliders, run/pause, scrubber, CSV export, resize.
+   * - If you extend the UI, plug handlers into this section.
+   */
   els.scenario.addEventListener('change', e=> applyScenario(e.target.value));
 
   function applyScenario(name){
@@ -2658,7 +2618,7 @@
     updateMetrics();
   });
 
-
+  /* CSV export: exports minimal series for downstream analysis */
   els.exportCSV.addEventListener('click', ()=>{
     const rows=[["t","S","E","I","R","D","everInf"]];
     const s=State.series;
@@ -2681,12 +2641,14 @@
     a.click();
   });
 
+  /* Main animation loop: runs only while State.running is true */
   function loop(){
     if(!State.running) return;
     step();
     requestAnimationFrame(loop);
   }
 
+  /* Keep layout and charts responsive */
   window.addEventListener('resize', () => {
     resizeSimCanvas();
     updateChartLayouts();
@@ -2697,15 +2659,18 @@
     updateMetrics();
   });
 
-  // ===========================================================
-  // BOOTSTRAP
-  // ===========================================================
+  /* Initial boot sequence:
+   * 1) Sync UI labels
+   * 2) Seed RNG
+   * 3) Build initial population
+   * 4) Size charts and draw one frame
+   */
   syncSliders();
   setSeed(+els.seed.value || 42);
-  initPeople();          // sets up people + draws once
-  updateChartLayouts();  // size the chart canvases correctly
-  drawCharts();          // redraw charts with the new layout
-  
+  initPeople();
+  updateChartLayouts();
+  drawCharts();
+
 })();
 </script>
 </body>
