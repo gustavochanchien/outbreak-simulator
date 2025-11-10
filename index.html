@@ -54,70 +54,143 @@
       --fw-bold: 700;
     }
 
-    /* -------------------- DARK THEME (default) ------------------- */
-    :root[data-theme="dark"] {
-      --bg:#0b0d12;
-      --panel:#121621;
-      --muted:#8a93a6;
-      --text:#e7ecf5;
+    /* -------------------- DARK THEME (VS Code + original sim colors) ------------------- */
+:root[data-theme="dark"] {
+  /* VS Code / Monokai-like surfaces */
+  --bg: #1e1e1e;
+  --panel: #252526;
+  --panel-soft: #2d2d30;
+  --canvas-bg: #272822;
 
-      --accent:#4da3ff;
-      --accent2:#ffb547;
+  /* Text */
+  --text: #f8f8f2;
+  --muted: #9da5b4;
 
-      --c-sus:#525252;
-      --c-exp:#ffd54a;
-      --c-inf:#ff4d4d;
-      --c-imm:#4cba87;
-      --c-dead:#b00020;
+  /* UI accents */
+  --accent: #66d9ef;
+  --accent2: #fd971f;
 
-      --vax-eff:#2196f3;
-      --vax-ineff:#2196f3;
+  /* ✅ Simulation colors restored */
+  --c-sus: #525252;
+  --c-exp: #ffd54a;
+  --c-inf: #ff4d4d;
+  --c-imm: #4cba87;
+  --c-dead: #b00020;
 
-      --canvas-bg:#0e1320;
-      --panel-soft:#1b2233;
+  --vax-eff: #2196f3;
+  --vax-ineff: #2196f3;
 
-      --border-soft:rgba(255,255,255,.06);
-      --border-strong:rgba(255,255,255,.18);
+  /* Borders & inputs */
+  --border-soft: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.18);
+  --input-bg: #1e1e1e;
+  --input-border: rgba(255, 255, 255, 0.14);
 
-      --input-bg:#0e1320;
-      --input-border:rgba(255,255,255,.10);
+  /* Pills / tags */
+  --pill-bg: #2d2d30;
+}
 
-      --pill-bg:#1b2233;
-    }
+/* ------------------------ LIGHT THEME (brighter colors) ------------------------ */
+:root[data-theme="light"] {
+  /* Base surfaces */
+  --bg: #fafafa;
+  --panel: #ffffff;
+  --panel-soft: #f5f5f5;
+  --canvas-bg: #ffffff;
 
-    /* ------------------------ LIGHT THEME ------------------------ */
-    :root[data-theme="light"] {
-      --bg:#ffffff;
-      --panel:#ffffff;
-      --muted:#6b7280;
-      --text:#111827;
+  /* Text */
+  --text: #111827;
+  --muted: #8e908c;
 
-      --accent:#2563eb;
-      --accent2:#ea580c;
+  /* UI accents (more pop) */
+  --accent: #22c5ff;        /* bright cyan */
+  --accent2: #ff9800;       /* vivid orange */
 
-      --c-sus:#cecece;
-      --c-exp:#d97706;
-      --c-inf:#dc2626;
-      --c-imm:#15803d;
-      --c-dead:#7f1d1d;
+  /* Simulation / chart colors - brighter & clearer */
+  --c-sus: #d4d4d4;         /* light neutral gray */
+  --c-exp: #fbbf24;         /* bright amber */
+  --c-inf: #ef4444;         /* strong red */
+  --c-imm: #22c55e;         /* bright green */
+  --c-dead: #b91c1c;        /* deep red for contrast */
 
-      --vax-eff:#2563eb;
-      --vax-ineff:#2563eb;
+  /* Vaccination */
+  --vax-eff: #2563eb;       /* strong blue */
+  --vax-ineff: #2563eb;
 
-      --canvas-bg:#ffffff;
-      --panel-soft:#f3f4f6;
-      --border-soft:rgba(15,23,42,.08);
-      --border-strong:rgba(15,23,42,.16);
+  /* Borders & inputs */
+  --border-soft: rgba(0, 0, 0, 0.06);
+  --border-strong: rgba(0, 0, 0, 0.16);
+  --input-bg: #f9f9f9;
+  --input-border: rgba(0, 0, 0, 0.16);
 
-      --input-bg:#f9fafb;
-      --input-border:rgba(148,163,253,.5);
+  /* Pills / tags */
+  --pill-bg: #f5f5f5;
+}
 
-      --pill-bg:#f3f4f6;
-    }
-    :root[data-theme="light"] #toggleBtn {
-      background: #60a5fa;  /* lighter than #2563eb and #4da3ff */
-      color: #0f172a;
-    }
+/* Keep VS Code-like controls */
+:root[data-theme="light"] #themeToggle,
+:root[data-theme="light"] #toggleBtn {
+  background: #e7e7e7;
+  color: #272822;
+  border-color: #d4d4d4;
+}
+
+
+/* VS Code-like controls */
+:root[data-theme="dark"] #themeToggle,
+:root[data-theme="dark"] #toggleBtn {
+  background: #3c3c3c;
+  color: #f8f8f2;
+  border-color: #454545;
+}
+
+/* ------------------------ ACCESSIBLE THEME (LIGHT, HIGH CONTRAST) ------------------
+   Colorblind-friendly & playful, built on light surfaces
+----------------------------------------------------------------------------------- */
+:root[data-theme="accessible"] {
+  /* Surfaces */
+  --bg: #ffffff;              /* pure white for max contrast */
+  --panel: #ffffff;
+  --panel-soft: #f2f2f2;
+  --canvas-bg: #ffffff;
+
+  /* Text */
+  --text: #111827;            /* very dark gray, readable */
+  --muted: #4b5563;           /* darker muted for readability */
+
+  /* UI accents (colorblind-safe, code-y) */
+  --accent: #0072b2;          /* strong blue */
+  --accent2: #e69f00;         /* rich amber */
+
+  /* Simulation / chart colors (Okabe–Ito inspired, all distinct) */
+  --c-sus: #dddddd;           /* neutral gray for baseline */
+  --c-exp: #0072b2;           /* orange (Exposed) */
+  --c-inf: #e69f00;           /* blue (Infectious) */
+  --c-imm: #009e73;           /* teal/green (Immune) */
+  --c-dead: #3f2a56;          /* magenta (Dead) */
+
+  /* Vaccination: clear, consistent sky blue outline */
+  --vax-eff: #56b4e9;
+  --vax-ineff: #56b4e9;
+
+  /* Borders & inputs (stronger than default light mode) */
+  --border-soft: rgba(0, 0, 0, 0.14);
+  --border-strong: rgba(0, 0, 0, 0.26);
+  --input-bg: #f9fafb;
+  --input-border: rgba(0, 0, 0, 0.26);
+
+  /* Pills / tags */
+  --pill-bg: #f2f2f2;
+}
+
+/* Controls in accessible mode: clear and prominent */
+:root[data-theme="accessible"] #themeToggle,
+:root[data-theme="accessible"] #toggleBtn {
+  background: #111827;
+  color: #f9fafb;
+  border-color: #0072b2;
+}
+
 
 
     /* Semantic text colors mapped to existing palette */
@@ -1035,33 +1108,57 @@
   // THEME & APP BOOTSTRAP
   // ===========================================================
   const root = document.documentElement;
+  const THEMES = ['dark', 'light', 'accessible'];
   const storedTheme = localStorage.getItem('sim-theme');
-  root.setAttribute(
-    'data-theme',
-    (storedTheme === 'light' || storedTheme === 'dark') ? storedTheme : 'light'
-  );
+
+  // Fallback to first known theme if stored value is invalid
+  const initialTheme = THEMES.includes(storedTheme) ? storedTheme : 'light';
+  root.setAttribute('data-theme', initialTheme);
+
 
   const themeToggle = $('#themeToggle');
 
   function syncThemeToggle(){
-    if(!themeToggle) return;
-    const isDark = root.getAttribute('data-theme') !== 'light';
-    themeToggle.innerHTML = isDark
-      ? '<span>☀</span> <span>Light mode</span>'
-      : '<span>🌙</span> <span>Dark mode</span>';
+    if (!themeToggle) return;
+    const current = root.getAttribute('data-theme') || 'light';
+
+    let label = '';
+    let icon = '';
+
+    if (current === 'dark') {
+      icon = '';
+      label = 'Light mode';
+    } else if (current === 'light') {
+      icon = '';
+      label = 'Accessible mode';
+    } else {
+      // accessible → next is dark
+      icon = '';
+      label = 'Dark mode';
+    }
+
+    themeToggle.innerHTML = `<span>${icon}</span> <span>${label}</span>`;
   }
 
-  if(themeToggle){
-    themeToggle.addEventListener('click', ()=>{
-      const current = root.getAttribute('data-theme') || 'dark';
-      const next = current === 'dark' ? 'light' : 'dark';
+
+  if (themeToggle) {
+    themeToggle.addEventListener('click', () => {
+      const current = root.getAttribute('data-theme') || 'light';
+      const idx = THEMES.indexOf(current);
+      const next = THEMES[(idx + 1 + THEMES.length) % THEMES.length];
+
       root.setAttribute('data-theme', next);
       localStorage.setItem('sim-theme', next);
+
       drawCanvas();
       drawCharts();
+      updateSidebarCounts();
+      updateRDisplaysLive();
+      updateMetrics();
       syncThemeToggle();
     });
   }
+
 
   syncThemeToggle();
 
