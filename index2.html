@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Outbreak Simulator - Minimal</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #0b0d12;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        Roboto, Helvetica, Arial, sans-serif;
+      color: #e7ecf5;
+    }
+
+    #sim {
+      display: block;
+      width: min(90vw, 960px);
+      height: min(60vh, 540px);
+      background: #0e1320;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    #toggleBtn {
+      margin-top: 16px;
+      padding: 8px 20px;
+      border-radius: 999px;
+      border: none;
+      background: #4da3ff;
+      color: #001027;
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    #toggleBtn:focus-visible {
+      outline: 2px solid #4da3ff;
+      outline-offset: 3px;
+    }
+
+    #timeDisplay {
+      margin-top: 8px;
+      font-size: 12px;
+      color: #8a93a6;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="sim" width="960" height="540" aria-label="Simulation canvas"></canvas>
+  <button id="toggleBtn" aria-pressed="false">▶ Play</button>
+  <div id="timeDisplay">t = 0 days</div>
+
+  <script>
+    "use strict";
+
+    (function () {
+      // ---- States ----
+      const STATE = {
+        S: 0, // Susceptible
+        E: 1, // Exposed (short latent)
+        I: 2, // Infectious
+        R: 3, // Recovered / Immune
+        D: 4  // Dead
+      };
+
+      // ---- Colors ----
+      const COLORS = {
+        [STATE.S]: "#525252",
+        [STATE.E]: "#ffd54a",
+        [STATE.I]: "#ff4d4d",
+        [STATE.R]: "#4cba87",
+        [STATE.D]: "#b00020"
+      };
+
+      // ---- DOM ----
+      const canvas = document.getElementById("sim");
+      const ctx = canvas.getContext("2d");
+      const toggleBtn = document.getElementById("toggleBtn");
+      const timeDisplay = document.getElementById("timeDisplay");
+
+      // ---- Fixed Parameters (minimal, based on original spirit) ----
+      const N = 5000;
+      const initialInfected = 5;
+      const beta = 0.35;      // infection rate-ish
+      const gamma = 0.1;      // recovery rate
+      const mu = 0.01;        // mortality rate
+      const dt = 1;           // time step (days)
+      const latentRate = 0.5; // E -> I per day
+      const neighborsType = "4"; // 4-neighborhood
+
+      // ---- State ----
+      let people = [];
+      let cols = 0;
+      let rows = 0;
+      let t = 0;
+      let running = false;
+
+      // ---- Init grid & population ----
+      function init() {
+        // Layout: near-square grid
+        cols = Math.ceil(Math.sqrt(N) * 1.3);
+        rows = Math.ceil(N / cols);
+
+        people = new Array(N).fill(0).map((_, i) => ({
+          col: i % cols,
+          row: Math.floor(i / cols),
+          state: STATE.S,
+          // Track how long they've been in current state (used for I)
+          age: 0
+        }));
+
+        // Randomly seed infected
+        const idxs = shuffle([...Array(N).keys()]);
+        let seeded = 0;
+        for (let i = 0; i < idxs.length && seeded < initialInfected; i++) {
+          const p = people[idxs[i]];
+          if (p.state === STATE.S) {
+            p.state = STATE.I;
+            p.age = 0;
+            seeded++;
+          }
+        }
+
+        t = 0;
+        running = false;
+        updateToggleLabel();
+        draw();
+        updateTimeDisplay();
+      }
+
+      // ---- Helpers ----
+      function shuffle(arr) {
+        for (let i = arr.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+        return arr;
+      }
+
+      function neighbors(i) {
+        const p = people[i];
+        const { col, row } = p;
+        const list = [];
+
+        if (neighborsType === "4") {
+          const coords = [
+            [col + 1, row],
+            [col - 1, row],
+            [col, row + 1],
+            [col, row - 1]
+          ];
+          for (const [c, r] of coords) {
+            if (c >= 0 && c < cols && r >= 0 && r < rows) {
+              const idx = r * cols + c;
+              if (idx >= 0 && idx < N) list.push(idx);
+            }
+          }
+        }
+
+        return list;
+      }
+
+      // ---- Simulation step ----
+      function step() {
+        if (!people.length) return;
+
+        const currentStates = people.map((p) => p.state);
+        const newStates = currentStates.slice();
+        const ages = people.map((p) => p.age);
+
+        for (let i = 0; i < N; i++) {
+          const s = currentStates[i];
+          const age = ages[i];
+
+          // Susceptible: infection from infectious neighbors
+          if (s === STATE.S) {
+            const neigh = neighbors(i);
+            let infCount = 0;
+            for (const j of neigh) {
+              if (currentStates[j] === STATE.I) infCount++;
+            }
+            if (infCount > 0) {
+              const probInfect = 1 - Math.exp(-beta * infCount * dt);
+              if (Math.random() < probInfect) {
+                newStates[i] = STATE.E;
+              }
+            }
+          }
+
+          // Exposed -> Infectious
+          else if (s === STATE.E) {
+            const pE = 1 - Math.exp(-latentRate * dt);
+            if (Math.random() < pE) {
+              newStates[i] = STATE.I;
+              ages[i] = 0;
+            } else {
+              ages[i] = age + dt;
+            }
+          }
+
+          // Infectious -> Recovered or Dead
+          else if (s === STATE.I) {
+            const pR = 1 - Math.exp(-gamma * dt);
+            const pD = 1 - Math.exp(-mu * dt);
+            const u = Math.random();
+            if (u < pD) {
+              newStates[i] = STATE.D;
+              ages[i] = 0;
+            } else if (u < pD + pR) {
+              newStates[i] = STATE.R;
+              ages[i] = 0;
+            } else {
+              ages[i] = age + dt;
+            }
+          }
+
+          // R / D: stay put in this minimal version
+        }
+
+        for (let i = 0; i < N; i++) {
+          people[i].state = newStates[i];
+          people[i].age = ages[i];
+        }
+
+        t += dt;
+        draw();
+        updateTimeDisplay();
+      }
+
+      // ---- Drawing ----
+      function draw() {
+        const W = canvas.width;
+        const H = canvas.height;
+
+        ctx.clearRect(0, 0, W, H);
+        ctx.fillStyle = "#0e1320";
+        ctx.fillRect(0, 0, W, H);
+
+        if (!people.length) return;
+
+        const cell = Math.min(W / cols, H / rows);
+        const offsetX = (W - cols * cell) / 2;
+        const offsetY = (H - rows * cell) / 2;
+        const r = Math.max(2, (cell * 0.3));
+
+        for (let i = 0; i < N; i++) {
+          const p = people[i];
+          const x = offsetX + (p.col + 0.5) * cell;
+          const y = offsetY + (p.row + 0.5) * cell;
+          const color = COLORS[p.state] || "#ffffff";
+
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.arc(x, y, r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // ---- UI ----
+      function updateToggleLabel() {
+        if (running) {
+          toggleBtn.textContent = "⏸ Pause";
+          toggleBtn.setAttribute("aria-pressed", "true");
+        } else {
+          toggleBtn.textContent = "▶ Play";
+          toggleBtn.setAttribute("aria-pressed", "false");
+        }
+      }
+
+      function updateTimeDisplay() {
+        if (timeDisplay) {
+          timeDisplay.textContent = "t = " + t.toFixed(0) + " days";
+        }
+      }
+
+      toggleBtn.addEventListener("click", () => {
+        running = !running;
+        updateToggleLabel();
+        if (running) loop();
+      });
+
+      // ---- Animation loop ----
+      function loop() {
+        if (!running) return;
+        step();
+        requestAnimationFrame(loop);
+      }
+
+      // ---- Resize handling (keep canvas crisp & centered) ----
+      function resizeCanvas() {
+        const displayWidth = canvas.clientWidth;
+        const displayHeight = canvas.clientHeight;
+        const dpr = window.devicePixelRatio || 1;
+        const w = Math.floor(displayWidth * dpr);
+        const h = Math.floor(displayHeight * dpr);
+        if (canvas.width !== w || canvas.height !== h) {
+          canvas.width = w;
+          canvas.height = h;
+          draw();
+        }
+      }
+
+      window.addEventListener("resize", () => {
+        resizeCanvas();
+      });
+
+      // ---- Bootstrap ----
+      resizeCanvas();
+      init();
+    })();
+  </script>
+</body>
+</html>
