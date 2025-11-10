@@ -700,12 +700,18 @@
       </div>
     </div>
 
+    <!-- <button id="tutorialBtn" class="btn ghost tutorial-btn" type="button">
+    Tutorial
+  </button> -->
+
     <div class="header-controls">
       <select id="themeSelect" aria-label="Select theme">
         <option value="light">Light</option>
         <option value="dark">Dark</option>
         <option value="accessible">Accessible</option>
       </select>
+
+      
     </div>
   </div>
 </header>
@@ -715,7 +721,7 @@
     <div class="divider-label timelineTitle">Startup Parameters</div>
     <div class="row" id="coreRow">
       <div class="cell">
-        <label>Preset Scenario</label>
+        <label>Preset Scenario:</label>
         <select id="scenario">
           <option value="custom">Custom</option>
           <option value="rare">Rare Disease</option>
@@ -732,7 +738,7 @@
       </div>
 
       <div class="cell">
-        <label>Population N (<span id="NVal">5000</span>)</label>
+        <label>Population N (<span id="NVal">5000</span>):</label>
         <input
           id="N"
           class="popSlider"
@@ -745,20 +751,20 @@
       </div>
 
       <div class="cell w2">
-        <label>Contact Neighbors (4 or 6)</label>
+        <label>Daily Contacts (4 or 6):</label>
         <select id="contacts">
-          <option value="4" selected>4 · Square</option>
-          <option value="6">6 · Hex</option>
+          <option value="4" selected>4 · Square grid</option>
+          <option value="6">6 · Hex grid</option>
         </select>
       </div>
 
       <div class="cell w2">
-        <label>Seed</label>
+        <label>Seed:</label>
         <input id="seed" type="number" value="42" />
       </div>
 
       <div class="cell w2">
-        <label>Stochastic For Infection</label>
+        <label>Stochastic For Infection:</label>
         <select id="stochastic">
           <option value="1">On</option>
           <option value="0">Off</option>
@@ -766,38 +772,38 @@
       </div>
 
       <div class="cell w2">
-        <label>Initial Infected</label>
+        <label>Initial Infected:</label>
         <input id="I0" type="number" min="0" max="10000" step="1" value="5" />
       </div>
 
       <div class="cell w2">
-        <label>Initial Immune</label>
+        <label>Initial Immune:</label>
         <input id="R0" type="number" min="0" max="10000" step="1" value="0" />
       </div>
 
       <div class="cell w2">
         <label>
-          Mutation / waning (immune → susceptible / day)
+          Mutation / waning (immune → susceptible / day):
           <span class="hint" id="mutRateVal">0.000</span>
         </label>
-        <input id="mutRate" type="range" min="0" max="0.5" step="0.005" value="0" />
+        <input id="mutRate" type="range" min="0" max="0.5" step="0.0005" value="0" />
       </div>
 
       <div class="cell w2">
         <label>
-          Days Infectious
+          Days Infectious (affects recovery rate): 
           <span class="hint" id="daysInfVal">10.0</span>
         </label>
         <input id="daysInf" type="range" min="1" max="30" step="0.5" value="10" />
       </div>
 
       <div class="cell w2">
-        <label>Time step (days)</label>
+        <label>Time step (days):</label>
         <input id="dt" type="number" min="0.1" max="10" step="0.1" value="1" />
       </div>
 
       <div class="cell w2">
-        <label>Auto-stop when stable</label>
+        <label>Auto-stop when stable:</label>
         <select id="autoStop">
           <option value="1">On</option>
           <option value="0">Off</option>
@@ -814,15 +820,15 @@
 
           <div class="cell w4">
             <label>Infection rate β <span class="hint" id="betaVal"></span></label>
-            <input id="beta" type="range" min="0" max="1.2" step="0.01" value="0.35" />
+            <input id="beta" type="range" min="0" max="1.2" step="0.001" value="0.35" />
           </div>
           <div class="cell w4">
             <label>Recovery rate γ <span class="hint" id="gammaVal"></span></label>
-            <input id="gamma" type="range" min="0" max="1" step="0.01" value="0.1" />
+            <input id="gamma" type="range" min="0" max="1" step="0.001" value="0.1" />
           </div>
           <div class="cell w4">
             <label>Mortality rate μ <span class="hint" id="muVal"></span></label>
-            <input id="mu" type="range" min="0" max="0.5" step="0.005" value="0.01" />
+            <input id="mu" type="range" min="0" max="0.5" step="0.0001" value="0.01" />
           </div>
 
           <div class="cell w4">
@@ -835,7 +841,7 @@
           </div>
           <div class="cell w4">
             <label>Daily Vaccination Rate (%-points/day) <span class="hint" id="vaxRateVal">0.0 pts/day</span></label>
-            <input id="vaxRate" type="range" min="0" max="5" step="0.1" value="0" />
+            <input id="vaxRate" type="range" min="0" max="5" step="0.001" value="0" />
           </div>
 
           <div class="cell w6">
@@ -863,6 +869,14 @@
                 <span class="hint">/</span>
                 <span class="hint" id="scrubMax">0</span>
                 <span class="hint">days</span>
+              </div>
+
+              <div class="scrubWrap">
+                <span class="hint">Duplicate this configuration in a new window: </span>
+                <button class="btn ghost" id="cloneTimelineBtn" type="button">
+                  Clone parameters
+                </button>
+                
               </div>
             </div>
           </div>
@@ -1207,7 +1221,8 @@
     m_incRate: $('#m-incRate'),
     m_prevPoint: $('#m-prevPoint'),
     m_everInf: $('#m-everInf'),
-    m_cfr: $('#m-cfr')
+    m_cfr: $('#m-cfr'),
+    cloneBtn: $('#cloneTimelineBtn')
   };
 
   /*
@@ -1464,8 +1479,8 @@
 
   /* Keep all slider labels, derived parameters, and metrics visually in sync */
   function syncSliders(){
-    if(els.betaVal)  els.betaVal.textContent  = Number(els.beta.value).toFixed(2);
-    if(els.gammaVal) els.gammaVal.textContent = Number(els.gamma.value).toFixed(2);
+    if(els.betaVal)  els.betaVal.textContent  = Number(els.beta.value).toFixed(3);
+    if(els.gammaVal) els.gammaVal.textContent = Number(els.gamma.value).toFixed(3);
     if(els.muVal)    els.muVal.textContent    = Number(els.mu.value).toFixed(3);
     if(els.veVal)    els.veVal.textContent    = Number(els.ve.value).toFixed(0) + "%";
 
@@ -1474,11 +1489,11 @@
     }
     if(els.vaxRate && els.vaxRateVal){
       els.vaxRateVal.textContent =
-        Number(els.vaxRate.value).toFixed(1) + " pts/day";
+        Number(els.vaxRate.value).toFixed(3) + " pts/day";
     }
     if(els.mutRate && els.mutRateVal){
       els.mutRateVal.textContent =
-        Number(els.mutRate.value).toFixed(3);
+        Number(els.mutRate.value).toFixed(4);
     }
     if(els.daysInf && els.daysInfVal){
       els.daysInfVal.textContent =
@@ -1511,6 +1526,15 @@
     const g = days > 0 ? (1 / days) : (+els.gamma.value || 0.1);
     els.gamma.value = g.toFixed(2);
   }
+
+  function syncDaysInfFromGamma(){
+    if (!els.gamma || !els.daysInf) return;
+    const g = parseFloat(els.gamma.value);
+    if (g > 0){
+      els.daysInf.value = (1 / g).toFixed(1);
+    }
+  }
+
 
   /* Chart canvas sizing: responsive + HiDPI aware */
   function prepareChartCanvas(c){
@@ -2137,6 +2161,114 @@
     if(els.scrubVal) els.scrubVal.textContent = currentT.toFixed(0);
   }
 
+  function buildCloneURL() {
+    const base = new URL(window.location.href);
+    let url;
+
+    if (base.protocol === 'file:') {
+      // Local file: same path, clear query/hash
+      url = new URL(base.href);
+      url.search = '';
+      url.hash = '';
+    } else {
+      // http/https: same path on same origin
+      url = new URL(base.pathname, base.origin);
+      url.search = '';
+      url.hash = '';
+    }
+
+    const p = url.searchParams; // ✅ was missing
+
+    // Core parameters
+    if (els.scenario)  p.set('scenario', els.scenario.value);
+    if (els.N)         p.set('N', els.N.value);
+    if (els.I0)        p.set('I0', els.I0.value);
+    if (els.R0)        p.set('R0', els.R0.value);
+    if (els.dt)        p.set('dt', els.dt.value);
+    if (els.seed)      p.set('seed', els.seed.value);
+    if (els.stoch)     p.set('stochastic', els.stoch.value);
+    if (els.autoStop)  p.set('autoStop', els.autoStop.value);
+    if (els.contacts)  p.set('contacts', els.contacts.value);
+
+    // Live parameters
+    if (els.beta)      p.set('beta', els.beta.value);
+    if (els.gamma)     p.set('gamma', els.gamma.value);
+    if (els.mu)        p.set('mu', els.mu.value);
+    if (els.ve)        p.set('ve', els.ve.value);
+    if (els.vaxCov)    p.set('vaxCov', els.vaxCov.value);
+    if (els.vaxRate)   p.set('vaxRate', els.vaxRate.value);
+    if (els.mutRate)   p.set('mutRate', els.mutRate.value);
+    if (els.daysInf)   p.set('daysInf', els.daysInf.value);
+
+    return url.toString();
+  }
+
+  if (els.cloneBtn) {
+    els.cloneBtn.addEventListener('click', () => {
+      const cloneURL = buildCloneURL();
+
+      // Ask for a separate window (browser / host decides tab vs window)
+      const features = [
+        'width=1200',
+        'height=800',
+        'resizable=yes',
+        'scrollbars=yes'
+      ].join(',');
+
+      let newWin = null;
+      try {
+        newWin = window.open(cloneURL, '_blank', features);
+      } catch (e) {
+        newWin = null;
+      }
+
+      // If blocked or disallowed (common source of NSURLErrorDomain -3001),
+      // fall back to navigating this window so the action still succeeds.
+      if (!newWin) {
+        window.location.href = cloneURL;
+      }
+    });
+  }
+
+
+
+
+  function loadParamsFromURL() {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.toString()) return;
+
+    const setIf = (key, el) => {
+      if (params.has(key) && el) el.value = params.get(key);
+    };
+
+    // Scenario first, without calling initPeople() here
+    if (params.has('scenario') && els.scenario) {
+      els.scenario.value = params.get('scenario');
+    }
+
+    // Core
+    setIf('N', els.N);
+    setIf('I0', els.I0);
+    setIf('R0', els.R0);
+    setIf('dt', els.dt);
+    setIf('seed', els.seed);
+    setIf('stochastic', els.stoch);
+    setIf('autoStop', els.autoStop);
+    setIf('contacts', els.contacts);
+
+    // Live
+    setIf('beta', els.beta);
+    setIf('gamma', els.gamma);
+    setIf('mu', els.mu);
+    setIf('ve', els.ve);
+    setIf('vaxCov', els.vaxCov);
+    setIf('vaxRate', els.vaxRate);
+    setIf('mutRate', els.mutRate);
+    setIf('daysInf', els.daysInf);
+  }
+
+
+
   /* Chart rendering entry point */
   function drawCharts(){
     drawIncVaxChart();
@@ -2553,10 +2685,14 @@
     const el = els[id];
     if(!el) return;
     el.addEventListener('input', ()=>{
+      if (id === 'gamma') {
+        syncDaysInfFromGamma();
+      }
       syncSliders();
       branchFromCurrent({reassignVaccination:false});
     });
   });
+
 
   ['ve','vaxCov'].forEach(id=>{
     const el = els[id];
@@ -2667,6 +2803,7 @@
    */
   syncSliders();
   setSeed(+els.seed.value || 42);
+  loadParamsFromURL();
   initPeople();
   updateChartLayouts();
   drawCharts();
