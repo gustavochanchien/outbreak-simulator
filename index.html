@@ -2026,107 +2026,145 @@
    * - Visualizes individuals as dots in either grid or hex layout.
    * - Respects scrubbed snapshot when viewing history.
    */
-  function drawCanvas(){
-    const c = els.simCanvas;
-    if (!c) return;
-    const ctx = c.getContext('2d');
-    const dpr = window.devicePixelRatio || 1;
+function drawCanvas(){
+  const c = els.simCanvas;
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
 
-    const W = (c.clientWidth || c.width / dpr);
-    const H = (c.clientHeight || c.height / dpr);
+  const W = (c.clientWidth || c.width / dpr);
+  const H = (c.clientHeight || c.height / dpr);
 
-    ctx.clearRect(0,0,W,H);
-    ctx.fillStyle=cssVar('--canvas-bg') || '#0e1320';
-    ctx.fillRect(0,0,W,H);
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle = cssVar('--canvas-bg') || '#0e1320';
+  ctx.fillRect(0,0,W,H);
 
-    const N=State.people.length;
-    if(!N) return;
+  const N = State.people.length;
+  if (!N) return;
 
-    const cols = State.cols || Math.ceil(Math.sqrt(N));
-    const rows = State.rows || Math.ceil(N/cols);
-    const contact = els.contacts.value || '4';
+  const cols = State.cols || Math.ceil(Math.sqrt(N));
+  const rows = State.rows || Math.ceil(N / cols);
+  const contact = els.contacts.value || '4';
 
-    const idx = State.viewIndex;
-    const snapshot = (idx!=null && State.snapshots[idx])
-      ? State.snapshots[idx]
-      : null;
+  const idx = State.viewIndex;
+  const snapshot = (idx != null && State.snapshots[idx])
+    ? State.snapshots[idx]
+    : null;
 
-    if(contact === '4'){
-      const cell = Math.min(W/cols, H/rows);
-      const offsetX = (W - cols*cell)/2;
-      const offsetY = (H - rows*cell)/2;
+  if (contact === '4') {
+    // --- GRID (4 contacts) ---
+    const cell = Math.min(W / cols, H / rows);
+    const offsetX = (W - cols * cell) / 2;
+    const offsetY = (H - rows * cell) / 2;
 
-      State.people.forEach((p,i)=>{
-        const sObj = snapshot ? snapshot[i] : p;
-        const state = sObj.state;
-        const v     = sObj.v;
-        const vEff  = sObj.vEff;
+    // Dense if each dot is visually small
+    const useDenseStyle = cell < 6 || N > 6000;
 
-        const x = offsetX + (p.col + 0.5)*cell;
-        const y = offsetY + (p.row + 0.5)*cell;
-        const r = Math.max(2, cell*0.30);
+    State.people.forEach((p, i) => {
+      const sObj = snapshot ? snapshot[i] : p;
+      const state = sObj.state;
+      const v     = sObj.v;
+      const vEff  = sObj.vEff;
 
-        ctx.fillStyle=getColor(state);
+      const x = offsetX + (p.col + 0.5) * cell;
+      const y = offsetY + (p.row + 0.5) * cell;
+      const r = Math.max(1.5, cell * 0.30); // base person radius
+
+      // Base person dot
+      ctx.fillStyle = getColor(state);
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (!v) return;
+
+      if (useDenseStyle) {
+        // Really dense: tiny blue center only
+        const dotR = Math.max(0.8, r * 0.45);
+        ctx.fillStyle = cssVar('--vax-eff');
         ctx.beginPath();
-        ctx.arc(x,y,r,0,Math.PI*2);
+        ctx.arc(x, y, dotR, 0, Math.PI * 2);
         ctx.fill();
-
-        if(v){
-          ctx.strokeStyle = cssVar('--vax-eff');
-          ctx.lineWidth = 1;
-          if(vEff){ ctx.setLineDash([]); }
-          else{ ctx.setLineDash([3,3]); }
-          ctx.beginPath();
-          ctx.arc(x,y,r+2,0,Math.PI*2);
-          ctx.stroke();
+      } else {
+        // Comfortable size: ring (solid for effective, dashed for ineffective)
+        ctx.strokeStyle = cssVar('--vax-eff');
+        ctx.lineWidth = 1;
+        if (vEff) {
           ctx.setLineDash([]);
+        } else {
+          ctx.setLineDash([3, 3]);
         }
-      });
-    } else {
-      const colsHex = cols;
-      const rowsHex = rows;
-      const baseWUnits = 2 + 1.5*(colsHex - 1) + 0.75;
-      const baseHUnits = 2 + (rowsHex - 1)*Math.sqrt(3);
-      const r = Math.max(2, Math.min(W/baseWUnits, H/baseHUnits));
-      const w = 1.5 * r;
-      const h = Math.sqrt(3) * r;
-
-      const totalW = 2*r + (colsHex - 1)*w + 0.5*w;
-      const totalH = 2*r + (rowsHex - 1)*h;
-      const offsetX = (W - totalW)/2;
-      const offsetY = (H - totalH)/2;
-
-      State.people.forEach((p,i)=>{
-        const sObj = snapshot ? snapshot[i] : p;
-        const state = sObj.state;
-        const v     = sObj.v;
-        const vEff  = sObj.vEff;
-
-        const row = p.row;
-        const col = p.col;
-
-        const x = offsetX + r + col*w + (row%2 ? w/2 : 0);
-        const y = offsetY + r + row*h;
-        const rr = r*0.5;
-
-        ctx.fillStyle = getColor(state);
         ctx.beginPath();
-        ctx.arc(x,y,rr,0,Math.PI*2);
-        ctx.fill();
+        ctx.arc(x, y, r + 2, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    });
 
-        if(v){
-          ctx.strokeStyle = cssVar('--vax-eff');
-          ctx.lineWidth = 1;
-          if(vEff){ ctx.setLineDash([]); }
-          else{ ctx.setLineDash([3,3]); }
-          ctx.beginPath();
-          ctx.arc(x,y,rr+2,0,Math.PI*2);
-          ctx.stroke();
+  } else {
+    // --- HEX (6 contacts) ---
+    const colsHex = cols;
+    const rowsHex = rows;
+    const baseWUnits = 2 + 1.5 * (colsHex - 1) + 0.75;
+    const baseHUnits = 2 + (rowsHex - 1) * Math.sqrt(3);
+    const r = Math.max(2, Math.min(W / baseWUnits, H / baseHUnits));
+    const w = 1.5 * r;
+    const h = Math.sqrt(3) * r;
+
+    const totalW = 2 * r + (colsHex - 1) * w + 0.5 * w;
+    const totalH = 2 * r + (rowsHex - 1) * h;
+    const offsetX = (W - totalW) / 2;
+    const offsetY = (H - totalH) / 2;
+
+    const useDenseStyle = r * 0.5 < 3 || N > 6000;
+
+    State.people.forEach((p, i) => {
+      const sObj = snapshot ? snapshot[i] : p;
+      const state = sObj.state;
+      const v     = sObj.v;
+      const vEff  = sObj.vEff;
+
+      const row = p.row;
+      const col = p.col;
+
+      const x = offsetX + r + col * w + (row % 2 ? w / 2 : 0);
+      const y = offsetY + r + row * h;
+      const rr = r * 0.5; // base radius in hex mode
+
+      // Base person dot
+      ctx.fillStyle = getColor(state);
+      ctx.beginPath();
+      ctx.arc(x, y, rr, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (!v) return;
+
+      if (useDenseStyle) {
+        // Dense: just blue center
+        const dotR = Math.max(0.8, rr * 0.6);
+        ctx.fillStyle = cssVar('--vax-eff');
+        ctx.beginPath();
+        ctx.arc(x, y, dotR, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        // Normal: ring
+        ctx.strokeStyle = cssVar('--vax-eff');
+        ctx.lineWidth = 1;
+        if (vEff) {
           ctx.setLineDash([]);
+        } else {
+          ctx.setLineDash([3, 3]);
         }
-      });
-    }
+        ctx.beginPath();
+        ctx.arc(x, y, rr + 2, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    });
   }
+}
+
+
 
   function getColor(state){
     if(state===STATE.S) return cssVar('--c-sus');
